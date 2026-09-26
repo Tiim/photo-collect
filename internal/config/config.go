@@ -16,7 +16,7 @@ type Config struct {
 
 	DatabasePath string
 
-	StorageBackend string // "filesystem" or "s3"
+	StorageBackend string // "filesystem", "s3" or "webdav"
 	StoragePath    string
 	S3Endpoint     string
 	S3Bucket       string
@@ -24,6 +24,11 @@ type Config struct {
 	S3AccessKey    string
 	S3SecretKey    string
 	S3PathStyle    bool
+
+	WebDAVURL      string
+	WebDAVUser     string
+	WebDAVPassword string
+	WebDAVBasePath string
 
 	OIDCIssuerURL    string
 	OIDCClientID     string
@@ -63,6 +68,10 @@ func Load() (*Config, error) {
 		S3AccessKey:    e.str("S3_ACCESS_KEY", ""),
 		S3SecretKey:    e.str("S3_SECRET_KEY", ""),
 		S3PathStyle:    e.boolean("S3_PATH_STYLE", true),
+		WebDAVURL:      e.str("WEBDAV_URL", ""),
+		WebDAVUser:     e.str("WEBDAV_USER", ""),
+		WebDAVPassword: e.str("WEBDAV_PASSWORD", ""),
+		WebDAVBasePath: e.str("WEBDAV_BASE_PATH", "/"),
 
 		OIDCIssuerURL:    e.str("OIDC_ISSUER_URL", ""),
 		OIDCClientID:     e.str("OIDC_CLIENT_ID", ""),
@@ -112,8 +121,12 @@ func (c *Config) validate() error {
 		req("STORAGE_PATH", c.StoragePath)
 	case "s3":
 		req("S3_BUCKET", c.S3Bucket)
+	case "webdav":
+		req("WEBDAV_URL", c.WebDAVURL)
+		req("WEBDAV_USER", c.WebDAVUser)
+		req("WEBDAV_PASSWORD", c.WebDAVPassword)
 	default:
-		errs = append(errs, fmt.Errorf("STORAGE_BACKEND must be \"filesystem\" or \"s3\", got %q", c.StorageBackend))
+		errs = append(errs, fmt.Errorf("STORAGE_BACKEND must be \"filesystem\", \"s3\" or \"webdav\", got %q", c.StorageBackend))
 	}
 	if c.WorkerCount < 1 {
 		errs = append(errs, errors.New("WORKER_COUNT must be >= 1"))

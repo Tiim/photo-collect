@@ -1,8 +1,8 @@
 # Photo Collect
 
 Self-hosted service for collecting photos from anonymous participants of an event.
-Participants upload through a temporary magic link; signed-in club members browse,
-rate, tag and download the photos. One Go binary, SQLite, and local or S3 storage.
+Participants upload through a temporary magic link; signed-in users browse,
+rate, tag and download the photos. One Go binary, SQLite, and local, S3 or WebDAV storage.
 
 See [docs/spec.md](docs/spec.md) for the requirements.
 
@@ -21,10 +21,11 @@ The container persists everything under `/data` (`photos.db`, `photos/`, `export
 | `BASE_URL` | – (required) | Public URL, e.g. `https://photos.example.com` (used for links, cookies, origin checks) |
 | `LISTEN_ADDR` | `:8080` | Listen address |
 | `DATABASE_PATH` | `/data/photos.db` | SQLite file (migrations run automatically at startup) |
-| `STORAGE_BACKEND` | `filesystem` | `filesystem` or `s3` |
+| `STORAGE_BACKEND` | `filesystem` | `filesystem`, `s3` or `webdav` |
 | `STORAGE_PATH` | `/data/photos` | Root directory for the filesystem backend |
 | `S3_ENDPOINT` / `S3_BUCKET` / `S3_REGION` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` | | S3-compatible storage (MinIO works); `S3_PATH_STYLE` defaults to `true` |
-| `OIDC_ISSUER_URL` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | – (required) | OIDC provider (Authentik: use the application's issuer URL) |
+| `WEBDAV_URL` / `WEBDAV_USER` / `WEBDAV_PASSWORD` / `WEBDAV_BASE_PATH` | | WebDAV storage, e.g. a Hetzner Storage Box (`https://uXXXXXX.your-storagebox.de`); `WEBDAV_BASE_PATH` defaults to `/`. Enable WebDAV in the Hetzner console and prefer a sub-account restricted to one directory |
+| `OIDC_ISSUER_URL` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | – (required) | OIDC provider |
 | `OIDC_REDIRECT_URL` | `$BASE_URL/auth/callback` | Register this redirect URI with the provider |
 | `SESSION_SECRET` | – (required, ≥32 chars) | Signs the nickname and login-state cookies |
 | `SESSION_TTL` | `720h` | Session lifetime (sliding) |
@@ -36,10 +37,13 @@ The container persists everything under `/data` (`photos.db`, `photos/`, `export
 | `WORKER_COUNT` | `2` | Background job workers |
 | `EXPORT_DIR` / `EXPORT_TTL` | `/data/exports` / `24h` | Where ZIP exports are built and how long they are kept |
 
-### OIDC / Authentik
+### OIDC
 
 Create an OAuth2/OpenID provider + application with redirect URI `https://<domain>/auth/callback`
 and scopes `openid profile email`. Every user who can sign in has full access (no roles).
+
+#### Authentik specific
+
 Restrict who may sign in with an Authentik policy/group binding on the application.
 
 ## Design notes
@@ -79,6 +83,8 @@ Copy the snapshot off the host (restic, rclone, …).
 **Filesystem storage** – back up the `photos/` directory (e.g. `restic backup /data/photos`).
 Originals are immutable and never overwritten, so incremental backups are cheap. Exports
 (`/data/exports`) are temporary and need no backup.
+
+**WebDAV storage** – use the provider's snapshots or `rclone sync` the remote directory.
 
 **S3 storage** – enable bucket versioning and/or replication in your S3/MinIO deployment.
 

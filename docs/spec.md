@@ -161,6 +161,7 @@ Image storage must be pluggable.
 The application shall support:
 1. Local filesystem
 2. S3-compatible object storage
+3. WebDAV (e.g. Hetzner Storage Box)
     
 
 The S3 implementation should also support S3-compatible systems such as MinIO.

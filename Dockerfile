@@ -5,7 +5,10 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/photos ./cmd/photos
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM alpine:3.22
+RUN addgroup -g 65532 -S photos \
+ && adduser -u 65532 -S -G photos -H -s /sbin/nologin photos \
+ && mkdir /data && chown photos:photos /data
 COPY --from=build /out/photos /photos
 ENV DATABASE_PATH=/data/photos.db \
     STORAGE_PATH=/data/photos \
@@ -13,5 +16,7 @@ ENV DATABASE_PATH=/data/photos.db \
     LISTEN_ADDR=:8080
 VOLUME /data
 EXPOSE 8080
-USER nonroot:nonroot
+USER photos:photos
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["/photos", "healthcheck"]
 ENTRYPOINT ["/photos"]

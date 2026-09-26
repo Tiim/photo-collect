@@ -28,6 +28,7 @@ import (
 	"github.com/tiim/photo-collect/internal/storage"
 	"github.com/tiim/photo-collect/internal/storage/filesystem"
 	"github.com/tiim/photo-collect/internal/storage/s3"
+	"github.com/tiim/photo-collect/internal/storage/webdav"
 	"github.com/tiim/photo-collect/internal/uploads"
 )
 
@@ -87,7 +88,7 @@ func backup(args []string) error {
 }
 
 // healthcheck probes the local readiness endpoint; used as the Docker HEALTHCHECK
-// because the distroless image has no curl.
+// so the image needs no curl.
 func healthcheck() error {
 	addr := os.Getenv("LISTEN_ADDR")
 	if addr == "" {
@@ -135,6 +136,10 @@ func serve(log *slog.Logger) error {
 		store, err = s3.New(ctx, s3.Options{
 			Endpoint: cfg.S3Endpoint, Bucket: cfg.S3Bucket, Region: cfg.S3Region,
 			AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey, PathStyle: cfg.S3PathStyle,
+		})
+	case "webdav":
+		store, err = webdav.New(ctx, webdav.Options{
+			URL: cfg.WebDAVURL, User: cfg.WebDAVUser, Password: cfg.WebDAVPassword, BasePath: cfg.WebDAVBasePath,
 		})
 	default:
 		store, err = filesystem.New(cfg.StoragePath)

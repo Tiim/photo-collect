@@ -17,8 +17,10 @@ services:
       # S3_BUCKET: photos
       # S3_ACCESS_KEY: ...
       # S3_SECRET_KEY: ...
-    healthcheck:
-      test: ["CMD", "/photos", "healthcheck"]
-      interval: 30s
+      # STORAGE_BACKEND: webdav   # e.g. Hetzner Storage Box
+      # WEBDAV_URL: https://u123456.your-storagebox.de
+      # WEBDAV_USER: u123456-sub1
+      # WEBDAV_PASSWORD: ...
+      # WEBDAV_BASE_PATH: /photos
 volumes:
   photos-data:
