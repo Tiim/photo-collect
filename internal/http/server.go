@@ -86,10 +86,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /upload/{token}/nickname/clear", s.uploadClearNickname)
 	mux.HandleFunc("POST /upload/{token}/images", s.uploadImages)
 
+	// Public clock page (photographed to calibrate camera clocks) and its time source.
+	mux.HandleFunc("GET /{$}", s.clockPage)
+	mux.HandleFunc("GET /time", s.serverTime)
+
 	// Authenticated UI.
-	mux.Handle("GET /{$}", s.auth(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/folders", http.StatusFound)
-	}))
 	mux.Handle("GET /folders", s.auth(s.foldersList))
 	mux.Handle("POST /folders", s.auth(s.folderCreate))
 	mux.Handle("GET /folders/{id}", s.auth(s.folderShow))

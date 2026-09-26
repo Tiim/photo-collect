@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // XMPData is the metadata written to a sidecar file.
@@ -12,6 +13,10 @@ type XMPData struct {
 	Rating   int      // 0 = unrated, otherwise 1-5
 	Tags     []string // includes the uploader/<nick> tag
 	Uploader string   // uploader nickname
+	// Captured is the capture time corrected by clock calibration, as a naive
+	// wall-clock time. Zero (the default) writes nothing: the original's own
+	// EXIF time is already right or unknown.
+	Captured time.Time
 }
 
 // BuildXMP renders a standard XMP sidecar understood by Lightroom, darktable,
@@ -29,9 +34,15 @@ func BuildXMP(d XMPData) []byte {
 	b.WriteString(`  <rdf:Description rdf:about=""` + "\n")
 	b.WriteString(`    xmlns:xmp="http://ns.adobe.com/xap/1.0/"` + "\n")
 	b.WriteString(`    xmlns:dc="http://purl.org/dc/elements/1.1/"` + "\n")
+	b.WriteString(`    xmlns:exif="http://ns.adobe.com/exif/1.0/"` + "\n")
 	b.WriteString(`    xmlns:lr="http://ns.adobe.com/lightroom/1.0/"`)
 	if d.Rating >= 1 && d.Rating <= 5 {
 		b.WriteString("\n    xmp:Rating=\"" + strconv.Itoa(d.Rating) + "\"")
+	}
+	if !d.Captured.IsZero() {
+		ts := d.Captured.Format("2006-01-02T15:04:05")
+		b.WriteString("\n    xmp:CreateDate=\"" + ts + "\"")
+		b.WriteString("\n    exif:DateTimeOriginal=\"" + ts + "\"")
 	}
 	b.WriteString(">\n")
 	if len(d.Tags) > 0 {

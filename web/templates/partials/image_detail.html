@@ -9,6 +9,14 @@
     <dl>
       <dt>Uploader</dt><dd>{{.UploaderNickname}}</dd>
       <dt>Uploaded</dt><dd>{{date .CreatedAt}}</dd>
+      {{if .HasCaptureTime}}
+      <dt>Taken</dt>
+      <dd>{{.CapturedAt}}
+        {{if .Corrected}}<br><span class="muted small">camera clock said {{.CameraTime}} · corrected by {{.OffsetText}} from a clock photo</span>
+        {{else if .DeviceKey.Valid}}<br><span class="muted small">no clock photo for this camera yet</span>{{end}}
+      </dd>
+      {{end}}
+      {{if .IsCalibration}}<dt>Clock photo</dt><dd>Shows {{.CalibRefTime.String}}. Used to correct this camera's timestamps.</dd>{{end}}
       <dt>Size</dt><dd>{{humanSize .SizeBytes}} · {{.Width}}×{{.Height}}</dd>
       <dt>Type</dt><dd>{{.MimeType}}</dd>
     </dl>

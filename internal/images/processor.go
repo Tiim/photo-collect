@@ -22,6 +22,8 @@ type Derived struct {
 // of the application does not depend on a particular image library.
 type Processor interface {
 	Derive(ctx context.Context, original io.Reader, mime string) (*Derived, error)
+	// ScanClock looks for a clock-calibration QR code; nil if there is none.
+	ScanClock(ctx context.Context, original io.Reader, mime string) (*ClockReading, error)
 }
 
 // GoProcessor is a pure-Go Processor. It bounds the number of concurrent
@@ -75,8 +77,9 @@ func (p *GoProcessor) Derive(ctx context.Context, original io.Reader, mime strin
 	return &d, nil
 }
 
-// encodeScaled fits img within max×max (never upscaling) and encodes it as JPEG.
-func encodeScaled(img image.Image, max, quality int) ([]byte, error) {
+// scaleToFit resamples img to fit within max×max (never upscaling), flattened
+// onto white. It always returns a fresh RGBA image.
+func scaleToFit(img image.Image, max int) *image.RGBA {
 	b := img.Bounds()
 	w, h := b.Dx(), b.Dy()
 	if w > max || h > max {
@@ -96,8 +99,13 @@ func encodeScaled(img image.Image, max, quality int) ([]byte, error) {
 	// Flatten transparency onto white so JPEG output looks right.
 	draw.Draw(dst, dst.Bounds(), image.White, image.Point{}, draw.Src)
 	draw.CatmullRom.Scale(dst, dst.Bounds(), img, b, draw.Over, nil)
+	return dst
+}
+
+// encodeScaled fits img within max×max (never upscaling) and encodes it as JPEG.
+func encodeScaled(img image.Image, max, quality int) ([]byte, error) {
 	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: quality}); err != nil {
+	if err := jpeg.Encode(&buf, scaleToFit(img, max), &jpeg.Options{Quality: quality}); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil

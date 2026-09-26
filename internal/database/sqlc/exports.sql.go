@@ -12,7 +12,7 @@ import (
 
 const addAllFolderImagesToExport = `-- name: AddAllFolderImagesToExport :exec
 INSERT INTO export_images (export_id, image_id)
-SELECT ?1, id FROM images WHERE folder_id = ?2
+SELECT ?1, id FROM images WHERE folder_id = ?2 AND is_calibration = 0
 `
 
 type AddAllFolderImagesToExportParams struct {

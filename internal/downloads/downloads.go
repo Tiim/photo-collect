@@ -18,6 +18,7 @@ import (
 	"github.com/tiim/photo-collect/internal/database"
 	"github.com/tiim/photo-collect/internal/database/sqlc"
 	"github.com/tiim/photo-collect/internal/domain"
+	"github.com/tiim/photo-collect/internal/images"
 	"github.com/tiim/photo-collect/internal/jobs"
 	"github.com/tiim/photo-collect/internal/storage"
 )
@@ -187,7 +188,11 @@ func (s *Service) writeZip(ctx context.Context, exp sqlc.Export) (int64, error) 
 		if err != nil {
 			return 0, err
 		}
-		if _, err := xw.Write(BuildXMP(XMPData{Rating: rating, Tags: tags[im.ID], Uploader: im.UploaderNickname})); err != nil {
+		xmp := XMPData{Rating: rating, Tags: tags[im.ID], Uploader: im.UploaderNickname}
+		if im.TimeOffsetSeconds.Valid {
+			xmp.Captured, _ = images.CorrectedTime(im.ExifTime, im.TimeOffsetSeconds)
+		}
+		if _, err := xw.Write(BuildXMP(xmp)); err != nil {
 			return 0, err
 		}
 	}

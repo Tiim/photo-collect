@@ -1,0 +1,26 @@
+{{define "content"}}
+<div class="clock-page">
+  <h1>Camera clock check</h1>
+  <p class="muted">Photograph this screen with <strong>every camera or phone</strong> you take pictures with,
+    so that photos from devices with a wrong clock can be put in the right order.
+    Then upload the photo together with your others. Fill the frame with the code and keep it sharp.</p>
+
+  <div class="clock-card">
+    <div id="clock-qr" class="clock-qr" aria-label="Current time as QR code"></div>
+    <div id="clock-time" class="clock-time">--:--:--</div>
+    <div id="clock-date" class="clock-date">&nbsp;</div>
+  </div>
+  <p id="clock-status" class="muted small" role="status"></p>
+  <noscript><p class="error">This page needs JavaScript to show the current time.</p></noscript>
+
+  <p class="row">
+    {{if .Session}}
+    <a class="button" href="/folders">Go to folders</a>
+    {{else}}
+    <a class="button" href="/auth/login">Sign in</a>
+    {{end}}
+  </p>
+</div>
+<script src="/static/qrcode.js" defer></script>
+<script src="/static/clock.js" defer></script>
+{{end}}

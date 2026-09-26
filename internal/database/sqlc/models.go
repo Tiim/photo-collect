@@ -39,20 +39,26 @@ type FolderStandardTag struct {
 }
 
 type Image struct {
-	Seq              int64
-	ID               string
-	FolderID         string
-	OriginalFilename string
-	MimeType         string
-	SizeBytes        int64
-	Width            int64
-	Height           int64
-	Sha256           string
-	UploaderNickname string
-	Rating           sql.NullInt64
-	ThumbnailReady   int64
-	PreviewReady     int64
-	CreatedAt        string
+	Seq               int64
+	ID                string
+	FolderID          string
+	OriginalFilename  string
+	MimeType          string
+	SizeBytes         int64
+	Width             int64
+	Height            int64
+	Sha256            string
+	UploaderNickname  string
+	Rating            sql.NullInt64
+	ThumbnailReady    int64
+	PreviewReady      int64
+	CreatedAt         string
+	DeviceKey         sql.NullString
+	ExifTime          sql.NullString
+	QrScanned         int64
+	IsCalibration     int64
+	CalibRefTime      sql.NullString
+	TimeOffsetSeconds sql.NullInt64
 }
 
 type ImageTag struct {

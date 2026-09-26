@@ -63,3 +63,5 @@ func TestPagesRender(t *testing.T) {
 }
 
 func sqlNullInt(v int64) sql.NullInt64 { return sql.NullInt64{Int64: v, Valid: true} }
+
+func sqlNullStr(v string) sql.NullString { return sql.NullString{String: v, Valid: true} }

@@ -12,7 +12,7 @@ import (
 )
 
 const getImage = `-- name: GetImage :one
-SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at FROM images i
+SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds FROM images i
 JOIN folders f ON f.id = i.folder_id
 WHERE i.id = ? AND f.deleted_at IS NULL
 `
@@ -35,12 +35,18 @@ func (q *Queries) GetImage(ctx context.Context, id string) (Image, error) {
 		&i.ThumbnailReady,
 		&i.PreviewReady,
 		&i.CreatedAt,
+		&i.DeviceKey,
+		&i.ExifTime,
+		&i.QrScanned,
+		&i.IsCalibration,
+		&i.CalibRefTime,
+		&i.TimeOffsetSeconds,
 	)
 	return i, err
 }
 
 const getImageUnchecked = `-- name: GetImageUnchecked :one
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at FROM images WHERE id = ?
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds FROM images WHERE id = ?
 `
 
 func (q *Queries) GetImageUnchecked(ctx context.Context, id string) (Image, error) {
@@ -61,14 +67,20 @@ func (q *Queries) GetImageUnchecked(ctx context.Context, id string) (Image, erro
 		&i.ThumbnailReady,
 		&i.PreviewReady,
 		&i.CreatedAt,
+		&i.DeviceKey,
+		&i.ExifTime,
+		&i.QrScanned,
+		&i.IsCalibration,
+		&i.CalibRefTime,
+		&i.TimeOffsetSeconds,
 	)
 	return i, err
 }
 
 const insertImage = `-- name: InsertImage :one
-INSERT INTO images (id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at
+INSERT INTO images (id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, device_key, exif_time)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds
 `
 
 type InsertImageParams struct {
@@ -81,6 +93,8 @@ type InsertImageParams struct {
 	Height           int64
 	Sha256           string
 	UploaderNickname string
+	DeviceKey        sql.NullString
+	ExifTime         sql.NullString
 }
 
 func (q *Queries) InsertImage(ctx context.Context, arg InsertImageParams) (Image, error) {
@@ -94,6 +108,8 @@ func (q *Queries) InsertImage(ctx context.Context, arg InsertImageParams) (Image
 		arg.Height,
 		arg.Sha256,
 		arg.UploaderNickname,
+		arg.DeviceKey,
+		arg.ExifTime,
 	)
 	var i Image
 	err := row.Scan(
@@ -111,12 +127,18 @@ func (q *Queries) InsertImage(ctx context.Context, arg InsertImageParams) (Image
 		&i.ThumbnailReady,
 		&i.PreviewReady,
 		&i.CreatedAt,
+		&i.DeviceKey,
+		&i.ExifTime,
+		&i.QrScanned,
+		&i.IsCalibration,
+		&i.CalibRefTime,
+		&i.TimeOffsetSeconds,
 	)
 	return i, err
 }
 
 const listExportImages = `-- name: ListExportImages :many
-SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at FROM export_images ei
+SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds FROM export_images ei
 JOIN images i ON i.id = ei.image_id
 WHERE ei.export_id = ?
 ORDER BY i.seq
@@ -146,6 +168,66 @@ func (q *Queries) ListExportImages(ctx context.Context, exportID string) ([]Imag
 			&i.ThumbnailReady,
 			&i.PreviewReady,
 			&i.CreatedAt,
+			&i.DeviceKey,
+			&i.ExifTime,
+			&i.QrScanned,
+			&i.IsCalibration,
+			&i.CalibRefTime,
+			&i.TimeOffsetSeconds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFolderDevices = `-- name: ListFolderDevices :many
+SELECT device_key, uploader_nickname,
+       COUNT(*) AS image_count,
+       CAST(COALESCE(SUM(is_calibration), 0) AS INTEGER) AS calibration_count,
+       COUNT(time_offset_seconds) AS corrected_count,
+       CAST(COALESCE(MIN(time_offset_seconds), 0) AS INTEGER) AS min_offset,
+       CAST(COALESCE(MAX(time_offset_seconds), 0) AS INTEGER) AS max_offset
+FROM images
+WHERE folder_id = ? AND device_key IS NOT NULL
+GROUP BY device_key, uploader_nickname
+ORDER BY uploader_nickname, device_key
+`
+
+type ListFolderDevicesRow struct {
+	DeviceKey        sql.NullString
+	UploaderNickname string
+	ImageCount       int64
+	CalibrationCount int64
+	CorrectedCount   int64
+	MinOffset        int64
+	MaxOffset        int64
+}
+
+func (q *Queries) ListFolderDevices(ctx context.Context, folderID string) ([]ListFolderDevicesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listFolderDevices, folderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFolderDevicesRow
+	for rows.Next() {
+		var i ListFolderDevicesRow
+		if err := rows.Scan(
+			&i.DeviceKey,
+			&i.UploaderNickname,
+			&i.ImageCount,
+			&i.CalibrationCount,
+			&i.CorrectedCount,
+			&i.MinOffset,
+			&i.MaxOffset,
 		); err != nil {
 			return nil, err
 		}
@@ -188,7 +270,7 @@ func (q *Queries) ListImageIDsInFolder(ctx context.Context, folderID string) ([]
 }
 
 const listImagesByIDs = `-- name: ListImagesByIDs :many
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at FROM images
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds FROM images
 WHERE folder_id = ? AND id IN (/*SLICE:image_ids*/?)
 ORDER BY seq
 `
@@ -233,6 +315,12 @@ func (q *Queries) ListImagesByIDs(ctx context.Context, arg ListImagesByIDsParams
 			&i.ThumbnailReady,
 			&i.PreviewReady,
 			&i.CreatedAt,
+			&i.DeviceKey,
+			&i.ExifTime,
+			&i.QrScanned,
+			&i.IsCalibration,
+			&i.CalibRefTime,
+			&i.TimeOffsetSeconds,
 		); err != nil {
 			return nil, err
 		}
@@ -248,7 +336,7 @@ func (q *Queries) ListImagesByIDs(ctx context.Context, arg ListImagesByIDsParams
 }
 
 const listImagesInFolder = `-- name: ListImagesInFolder :many
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at FROM images
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds FROM images
 WHERE folder_id = ? AND seq < ?2
 ORDER BY seq DESC
 LIMIT ?3
@@ -284,6 +372,12 @@ func (q *Queries) ListImagesInFolder(ctx context.Context, arg ListImagesInFolder
 			&i.ThumbnailReady,
 			&i.PreviewReady,
 			&i.CreatedAt,
+			&i.DeviceKey,
+			&i.ExifTime,
+			&i.QrScanned,
+			&i.IsCalibration,
+			&i.CalibRefTime,
+			&i.TimeOffsetSeconds,
 		); err != nil {
 			return nil, err
 		}
@@ -296,6 +390,15 @@ func (q *Queries) ListImagesInFolder(ctx context.Context, arg ListImagesInFolder
 		return nil, err
 	}
 	return items, nil
+}
+
+const markImageScanned = `-- name: MarkImageScanned :exec
+UPDATE images SET qr_scanned = 1 WHERE id = ?
+`
+
+func (q *Queries) MarkImageScanned(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, markImageScanned, id)
+	return err
 }
 
 const markPreviewReady = `-- name: MarkPreviewReady :exec
@@ -313,6 +416,44 @@ UPDATE images SET thumbnail_ready = 1 WHERE id = ?
 
 func (q *Queries) MarkThumbnailReady(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, markThumbnailReady, id)
+	return err
+}
+
+const recomputeDeviceOffsets = `-- name: RecomputeDeviceOffsets :exec
+UPDATE images SET time_offset_seconds = (
+    SELECT CAST(strftime('%s', c.calib_ref_time) AS INTEGER) - CAST(strftime('%s', c.exif_time) AS INTEGER)
+    FROM images c
+    WHERE c.folder_id = images.folder_id AND c.device_key = images.device_key
+      AND c.is_calibration = 1 AND c.exif_time IS NOT NULL AND c.calib_ref_time IS NOT NULL
+    ORDER BY ABS(CAST(strftime('%s', c.exif_time) AS INTEGER) - CAST(strftime('%s', images.exif_time) AS INTEGER)), c.seq
+    LIMIT 1)
+WHERE images.folder_id = ?1 AND images.device_key = ?2 AND images.exif_time IS NOT NULL
+`
+
+type RecomputeDeviceOffsetsParams struct {
+	FolderID  string
+	DeviceKey sql.NullString
+}
+
+// Recomputes the clock offset of every image of one device in a folder: each
+// image uses the calibration shot nearest to it in (uncorrected) EXIF time.
+// Images without any calibration for their device end up with NULL.
+func (q *Queries) RecomputeDeviceOffsets(ctx context.Context, arg RecomputeDeviceOffsetsParams) error {
+	_, err := q.db.ExecContext(ctx, recomputeDeviceOffsets, arg.FolderID, arg.DeviceKey)
+	return err
+}
+
+const setImageCalibration = `-- name: SetImageCalibration :exec
+UPDATE images SET is_calibration = 1, calib_ref_time = ? WHERE id = ?
+`
+
+type SetImageCalibrationParams struct {
+	CalibRefTime sql.NullString
+	ID           string
+}
+
+func (q *Queries) SetImageCalibration(ctx context.Context, arg SetImageCalibrationParams) error {
+	_, err := q.db.ExecContext(ctx, setImageCalibration, arg.CalibRefTime, arg.ID)
 	return err
 }
 

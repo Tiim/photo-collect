@@ -143,6 +143,23 @@ The service should record basic technical metadata such as:
 - Upload timestamp
 - SHA-256/hash where useful for integrity
 
+### Camera clock calibration
+
+Cameras often have a wrong clock or time zone. The public start page (`/`) shows the current
+time as text and as a QR code (`PC1|<utc unix seconds>|<local wall time>`); people photograph it
+with each of their devices and upload the photo like any other.
+
+- A background job scans every upload for such a QR code. A hit marks the image as a calibration
+  photo (tag `calibration`, excluded from "download all").
+- A device is identified by uploader nickname + EXIF Make + Model (+ body serial when present).
+  Images without Make/Model or capture time cannot be corrected.
+- The offset is the QR wall time minus the photo's EXIF time. Each image of the same device in
+  the same folder uses the nearest calibration photo (by EXIF time). Offsets are recomputed when a
+  calibration photo arrives, so upload order does not matter.
+- Corrections are stored in the database only (never in the original, see above) and written to
+  the XMP sidecar (`xmp:CreateDate`, `exif:DateTimeOriginal`) of corrected images.
+- Accuracy is about one second.
+
 ## 8. Generated images
 
 For every valid original image, the service shall asynchronously generate:

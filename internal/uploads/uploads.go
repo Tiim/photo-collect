@@ -75,6 +75,8 @@ func (s *Service) Ingest(ctx context.Context, folderID, nickname, filename strin
 	if err != nil {
 		return nil, err
 	}
+	meta := images.ReadMeta(tmp)
+	deviceKey := meta.DeviceKey(nickname)
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
@@ -101,6 +103,8 @@ func (s *Service) Ingest(ctx context.Context, folderID, nickname, filename strin
 			Height:           int64(info.Height),
 			Sha256:           hex.EncodeToString(h.Sum(nil)),
 			UploaderNickname: nickname,
+			DeviceKey:        sql.NullString{String: deviceKey, Valid: deviceKey != ""},
+			ExifTime:         sql.NullString{String: meta.TakenAt.Format(images.WallTimeLayout), Valid: !meta.TakenAt.IsZero()},
 		})
 		if err != nil {
 			return err
@@ -108,7 +112,10 @@ func (s *Service) Ingest(ctx context.Context, folderID, nickname, filename strin
 		if err := s.applyInitialTags(ctx, q, folderID, imageID, nickname); err != nil {
 			return err
 		}
-		return s.queue.Enqueue(ctx, q, jobs.TypeDeriveImage, jobs.DerivePayload{ImageID: imageID})
+		if err := s.queue.Enqueue(ctx, q, jobs.TypeDeriveImage, jobs.DerivePayload{ImageID: imageID}); err != nil {
+			return err
+		}
+		return s.queue.Enqueue(ctx, q, jobs.TypeAnalyzeImage, jobs.AnalyzePayload{ImageID: imageID})
 	})
 	if err != nil {
 		// Don't leave an orphaned object behind.

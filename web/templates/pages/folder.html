@@ -12,6 +12,19 @@
   <div class="panel"><h2>Downloads</h2>{{template "exports" .Exports}}</div>
 </section>
 
+{{if .Devices}}
+<details class="devices">
+  <summary>Camera clocks ({{len .Devices}})</summary>
+  <table>
+    {{range .Devices}}
+    <tr><td>{{.Uploader}}</td><td>{{.Camera}}</td><td>{{.Images}} photos</td>
+        <td class="{{if not .Calibrated}}muted{{end}}">{{.Status}}</td></tr>
+    {{end}}
+  </table>
+  <p class="muted small">Photos of the <a href="/" target="_blank" rel="noopener">clock page</a> correct the timestamps of all photos from the same camera. They are tagged <em>calibration</em> and left out of "Download all".</p>
+</details>
+{{end}}
+
 <form id="select-form" hx-post="/folders/{{.Folder.ID}}/downloads" hx-target="#exports" hx-swap="outerHTML" class="row toolbar">
   <button type="submit">Download selected</button>
   <button type="submit" name="all" value="1">Download all</button>

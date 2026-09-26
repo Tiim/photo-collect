@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 
 	"github.com/tiim/photo-collect/internal/database"
+	"github.com/tiim/photo-collect/internal/database/sqlc"
+	"github.com/tiim/photo-collect/internal/domain"
 	"github.com/tiim/photo-collect/internal/images"
 	"github.com/tiim/photo-collect/internal/storage"
 )
@@ -28,6 +30,7 @@ type Handlers struct {
 // Register installs the handlers on q.
 func (h *Handlers) Register(q *Queue) {
 	q.Handle(TypeDeriveImage, h.deriveImage)
+	q.Handle(TypeAnalyzeImage, h.analyzeImage)
 	q.Handle(TypeDeleteFolder, h.deleteFolder)
 }
 
@@ -65,6 +68,65 @@ func (h *Handlers) deriveImage(ctx context.Context, raw json.RawMessage) error {
 		return fmt.Errorf("store thumbnail: %w", err)
 	}
 	return h.DB.Q.MarkThumbnailReady(ctx, img.ID)
+}
+
+// analyzeImage looks for a clock-calibration QR code in the image. A hit marks
+// the image as a calibration shot and recomputes the clock offsets of every
+// image from the same device, so the order in which photos are uploaded does
+// not matter.
+func (h *Handlers) analyzeImage(ctx context.Context, raw json.RawMessage) error {
+	var p AnalyzePayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return err
+	}
+	img, err := h.DB.Q.GetImage(ctx, p.ImageID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if img.QrScanned != 0 {
+		return nil
+	}
+
+	rc, err := h.Store.Get(ctx, storage.OriginalKey(img.FolderID, img.ID))
+	if err != nil {
+		return fmt.Errorf("read original: %w", err)
+	}
+	defer rc.Close()
+	clock, err := h.Processor.ScanClock(ctx, rc, img.MimeType)
+	if err != nil {
+		h.Log.Error("clock scan failed", "image_id", img.ID, "err", err)
+		return err
+	}
+
+	return h.DB.InTx(ctx, func(q *sqlc.Queries) error {
+		if clock != nil {
+			if err := q.SetImageCalibration(ctx, sqlc.SetImageCalibrationParams{
+				CalibRefTime: sql.NullString{String: clock.Wall.Format(images.WallTimeLayout), Valid: true},
+				ID:           img.ID,
+			}); err != nil {
+				return err
+			}
+			tag, err := q.UpsertTag(ctx, domain.CalibrationTag)
+			if err != nil {
+				return err
+			}
+			if err := q.AddImageTag(ctx, sqlc.AddImageTagParams{ImageID: img.ID, TagID: tag.ID}); err != nil {
+				return err
+			}
+			if img.DeviceKey.Valid && img.ExifTime.Valid {
+				if err := q.RecomputeDeviceOffsets(ctx, sqlc.RecomputeDeviceOffsetsParams{
+					FolderID: img.FolderID, DeviceKey: img.DeviceKey,
+				}); err != nil {
+					return err
+				}
+			}
+			h.Log.Info("clock calibration found", "image_id", img.ID, "folder_id", img.FolderID)
+		}
+		return q.MarkImageScanned(ctx, img.ID)
+	})
 }
 
 // deleteFolder removes every stored object and export file of a

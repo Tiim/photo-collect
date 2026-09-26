@@ -54,6 +54,11 @@ Restrict who may sign in with an Authentik policy/group binding on the applicati
 
 - Originals are stored untouched (bytes and EXIF). Thumbnails/previews are JPEG derivatives
   made by a background worker; HEIC is decoded in pure Go via WASM (no cgo).
+- Camera clocks: the start page (`/`) shows the time as text and QR code. Photograph it with each
+  camera and upload the photo like any other: the uploader's photos from that camera (same nickname,
+  make and model) then get a corrected capture time, shown in the image details and written to the
+  XMP sidecar on export. The originals are never touched. Accuracy is about one second; photos
+  that lack EXIF make/model or capture time cannot be corrected.
 - Ratings and tags live only in SQLite; ZIP exports contain the originals plus `.xmp` sidecars.
 - Storage keys are generated IDs (`folders/<folder>/images/<image>/original|preview|thumbnail`).
 - Deleting a folder hides it immediately and queues a retryable job that removes all objects,

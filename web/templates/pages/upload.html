@@ -14,6 +14,7 @@
     <label class="button">Choose photos<input id="file-input" type="file" multiple accept="image/*,.heic,.heif" hidden></label>
     <p class="muted small">JPEG, PNG, WebP and HEIC · up to {{.MaxSizeMB}} MB each</p>
   </div>
+  <p class="muted small">Cameras with a wrong clock? Photograph the <a href="/" target="_blank" rel="noopener">clock page</a> with each device and upload that photo too: timestamps are then corrected automatically.</p>
   <ul id="upload-list" class="upload-list"></ul>
 {{else}}
   <form method="post" action="/upload/{{.Token}}/nickname" class="stack">

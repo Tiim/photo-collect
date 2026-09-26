@@ -18,6 +18,8 @@ const (
 	MaxNicknameLen = 40
 	MaxTagLen      = 64
 	UploaderPrefix = "uploader/"
+	// CalibrationTag marks photos of the clock page (see the images package).
+	CalibrationTag = "calibration"
 )
 
 var idEncoding = base32.NewEncoding("abcdefghijklmnopqrstuvwxyz234567").WithPadding(base32.NoPadding)

@@ -72,6 +72,7 @@ type FolderPage struct {
 	Exports ExportsView
 	Grid    GridView
 	Count   int64
+	Devices []DeviceRow
 }
 
 // ---- handlers ----
@@ -125,7 +126,9 @@ func (s *Server) folderShow(w http.ResponseWriter, r *http.Request) {
 		if p.Link, err = s.linkView(ctx, f.ID); err == nil {
 			if p.Exports, err = s.exportsView(ctx, f.ID); err == nil {
 				if p.Grid, err = s.gridView(ctx, f.ID, math.MaxInt64); err == nil {
-					p.Count, err = s.db.Q.CountImagesInFolder(ctx, f.ID)
+					if p.Count, err = s.db.Q.CountImagesInFolder(ctx, f.ID); err == nil {
+						p.Devices, err = s.devicesView(ctx, f.ID)
+					}
 				}
 			}
 		}

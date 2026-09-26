@@ -18,6 +18,7 @@ import (
 // Job types.
 const (
 	TypeDeriveImage  = "derive_image"
+	TypeAnalyzeImage = "analyze_image"
 	TypeDeleteFolder = "delete_folder"
 	TypeBuildExport  = "build_export"
 )
@@ -25,6 +26,9 @@ const (
 // Job payloads.
 type (
 	DerivePayload struct {
+		ImageID string `json:"image_id"`
+	}
+	AnalyzePayload struct {
 		ImageID string `json:"image_id"`
 	}
 	DeleteFolderPayload struct {

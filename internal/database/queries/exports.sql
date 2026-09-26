@@ -6,7 +6,7 @@ INSERT OR IGNORE INTO export_images (export_id, image_id) VALUES (?, ?);
 
 -- name: AddAllFolderImagesToExport :exec
 INSERT INTO export_images (export_id, image_id)
-SELECT sqlc.arg(export_id), id FROM images WHERE folder_id = sqlc.arg(folder_id);
+SELECT sqlc.arg(export_id), id FROM images WHERE folder_id = sqlc.arg(folder_id) AND is_calibration = 0;
 
 -- name: GetExport :one
 SELECT * FROM exports WHERE id = ?;
