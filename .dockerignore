@@ -3,3 +3,4 @@ bin
 data
 *.db
 docs
+.env
