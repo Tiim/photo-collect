@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#dbeafe"/>
+  <!-- body -->
+  <path d="M32 6C21 6 15 15 15 27v13c0 10 7 18 17 18s17-8 17-18V27C49 15 43 6 32 6z" fill="#1f2937"/>
+  <!-- belly -->
+  <path d="M32 22c-8 0-12 7-12 17 0 9 5 16 12 16s12-7 12-16c0-10-4-17-12-17z" fill="#f9fafb"/>
+  <!-- eyes -->
+  <circle cx="26" cy="17" r="3" fill="#fff"/>
+  <circle cx="38" cy="17" r="3" fill="#fff"/>
+  <circle cx="26.6" cy="17.2" r="1.4" fill="#111827"/>
+  <circle cx="38.6" cy="17.2" r="1.4" fill="#111827"/>
+  <!-- beak -->
+  <path d="M28 21h8l-4 5z" fill="#f59e0b"/>
+  <!-- feet -->
+  <ellipse cx="24" cy="59" rx="7" ry="3" fill="#f59e0b"/>
+  <ellipse cx="40" cy="59" rx="7" ry="3" fill="#f59e0b"/>
+  <!-- camera -->
+  <rect x="17" y="34" width="30" height="19" rx="4" fill="#374151"/>
+  <path d="M25 34l2-4h10l2 4z" fill="#374151"/>
+  <circle cx="32" cy="43.5" r="6.5" fill="#9ca3af"/>
+  <circle cx="32" cy="43.5" r="4.5" fill="#1e3a8a"/>
+  <circle cx="30.3" cy="41.8" r="1.4" fill="#93c5fd"/>
+  <circle cx="43" cy="38" r="1.5" fill="#f87171"/>
+</svg>
