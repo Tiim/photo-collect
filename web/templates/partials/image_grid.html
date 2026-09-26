@@ -1,0 +1,1 @@
+{{define "image_grid"}}{{range .Images}}{{template "image_tile" .}}{{end}}{{if .NextBefore}}<div class="sentinel" hx-get="/folders/{{.FolderID}}/images?before={{.NextBefore}}" hx-trigger="revealed" hx-target="this" hx-swap="outerHTML"></div>{{end}}{{end}}

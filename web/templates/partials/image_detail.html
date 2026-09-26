@@ -1,0 +1,22 @@
+{{define "image_detail"}}
+<div class="detail">
+  <button type="button" class="close" data-close-modal aria-label="Close">×</button>
+  <div class="preview">
+    {{if .PreviewReady}}<img src="/images/{{.ID}}/preview" alt="{{.OriginalFilename}}">{{else}}<div class="placeholder">Preview is still being generated…</div>{{end}}
+  </div>
+  <div class="side">
+    <h2>{{.OriginalFilename}}</h2>
+    <dl>
+      <dt>Uploader</dt><dd>{{.UploaderNickname}}</dd>
+      <dt>Uploaded</dt><dd>{{date .CreatedAt}}</dd>
+      <dt>Size</dt><dd>{{humanSize .SizeBytes}} · {{.Width}}×{{.Height}}</dd>
+      <dt>Type</dt><dd>{{.MimeType}}</dd>
+    </dl>
+    <h3>Rating</h3>
+    {{template "rating" .TileView}}
+    <h3>Tags</h3>
+    {{template "image_tags" .Tags}}
+    <p><a class="button" href="/images/{{.ID}}/original?download=1">Download original</a></p>
+  </div>
+</div>
+{{end}}

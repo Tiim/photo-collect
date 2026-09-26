@@ -1,0 +1,24 @@
+{{define "upload_link"}}
+<div id="upload-link" hx-target="this" hx-swap="outerHTML">
+{{if .Exists}}
+  <div class="row"><input id="link-url" type="text" readonly value="{{.URL}}"><button type="button" class="secondary" data-copy="#link-url">Copy</button></div>
+  <p>{{if .Expired}}<span class="error">Expired</span> on{{else}}Expires{{end}} {{date .ExpiresAt}}</p>
+  <form hx-post="/folders/{{.FolderID}}/upload-link/extend" class="row">
+    <label>Valid for <input type="number" name="days" value="{{.DefaultDays}}" min="1" max="365" class="days"> days from now</label>
+    <button type="submit">Extend</button>
+  </form>
+  <div class="row">
+    <button type="button" class="secondary" hx-post="/folders/{{.FolderID}}/upload-link"
+            hx-confirm="Generate a new link? The current link stops working immediately.">Regenerate</button>
+    <button type="button" class="danger" hx-post="/folders/{{.FolderID}}/upload-link/revoke"
+            hx-confirm="Revoke the upload link? Nobody will be able to upload with it anymore.">Revoke</button>
+  </div>
+{{else}}
+  <p class="muted">No active upload link.</p>
+  <form hx-post="/folders/{{.FolderID}}/upload-link" class="row">
+    <label>Valid for <input type="number" name="days" value="{{.DefaultDays}}" min="1" max="365" class="days"> days</label>
+    <button type="submit">Create link</button>
+  </form>
+{{end}}
+</div>
+{{end}}

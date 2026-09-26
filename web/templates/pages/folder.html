@@ -1,0 +1,26 @@
+{{define "content"}}
+{{with .Data}}
+<div class="row spread">
+  <h1>{{.Folder.Name}} <span class="muted small">{{.Count}} images</span></h1>
+  <button class="danger" hx-post="/folders/{{.Folder.ID}}/delete"
+          hx-confirm="Delete this folder and all of its photos? This cannot be undone.">Delete folder</button>
+</div>
+
+<section class="panels">
+  <div class="panel"><h2>Upload link</h2>{{template "upload_link" .Link}}</div>
+  <div class="panel"><h2>Standard tags</h2>{{template "standard_tags" .Tags}}</div>
+  <div class="panel"><h2>Downloads</h2>{{template "exports" .Exports}}</div>
+</section>
+
+<form id="select-form" hx-post="/folders/{{.Folder.ID}}/downloads" hx-target="#exports" hx-swap="outerHTML" class="row toolbar">
+  <button type="submit">Download selected</button>
+  <button type="submit" name="all" value="1">Download all</button>
+  <button type="button" data-select-all class="secondary">Select all loaded</button>
+  <span class="muted small">Downloads contain the original files plus XMP sidecars with rating and tags.</span>
+</form>
+
+<div id="grid" class="grid">
+  {{template "image_grid" .Grid}}
+</div>
+{{end}}
+{{end}}

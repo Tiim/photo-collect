@@ -1,0 +1,1 @@
+{{define "stars"}}{{$r := .}}{{range seq 1 5}}<span class="star{{if le . $r}} on{{end}}">★</span>{{end}}{{end}}

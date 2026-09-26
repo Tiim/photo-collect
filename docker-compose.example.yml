@@ -1,0 +1,24 @@
+# Example deployment: single container, SQLite + filesystem storage in one volume.
+services:
+  photos:
+    build: .
+    restart: unless-stopped
+    ports: ["8080:8080"]
+    volumes:
+      - photos-data:/data
+    environment:
+      BASE_URL: https://photos.example.com
+      OIDC_ISSUER_URL: https://authentik.example.com/application/o/photos/
+      OIDC_CLIENT_ID: change-me
+      OIDC_CLIENT_SECRET: change-me
+      SESSION_SECRET: change-me-to-a-random-string-of-32+-chars
+      # STORAGE_BACKEND: s3
+      # S3_ENDPOINT: https://minio.example.com
+      # S3_BUCKET: photos
+      # S3_ACCESS_KEY: ...
+      # S3_SECRET_KEY: ...
+    healthcheck:
+      test: ["CMD", "/photos", "healthcheck"]
+      interval: 30s
+volumes:
+  photos-data:

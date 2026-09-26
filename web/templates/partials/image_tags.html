@@ -1,0 +1,15 @@
+{{define "image_tags"}}
+<div id="image-tags" hx-target="this" hx-swap="outerHTML">
+  <ul class="tags">
+    {{range .Tags}}<li>{{.Name}} <button type="button" class="x" title="Remove" hx-post="/images/{{$.ImageID}}/tags/{{.ID}}/delete">×</button></li>
+    {{else}}<li class="muted">No tags</li>{{end}}
+  </ul>
+  <form hx-post="/images/{{.ImageID}}/tags" class="row">
+    <input type="text" name="name" list="tag-options" placeholder="Add tag" maxlength="64" required autocomplete="off"
+           hx-get="/tags/suggest" hx-trigger="input changed delay:200ms" hx-target="#tag-options" hx-swap="innerHTML">
+    <datalist id="tag-options"></datalist>
+    <button type="submit">Add</button>
+  </form>
+</div>
+{{end}}
+{{define "tag_options"}}{{range .}}<option value="{{.}}">{{end}}{{end}}

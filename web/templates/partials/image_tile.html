@@ -1,0 +1,8 @@
+{{define "image_tile"}}<div class="tile" id="tile-{{.ID}}"{{if not .ThumbnailReady}} hx-get="/images/{{.ID}}/tile" hx-trigger="load delay:3s" hx-target="this" hx-swap="outerHTML"{{end}}>
+  <input type="checkbox" name="image" value="{{.ID}}" form="select-form" class="sel" aria-label="Select {{.OriginalFilename}}">
+  <a class="thumb" href="/images/{{.ID}}" hx-get="/images/{{.ID}}" hx-target="#modal" hx-swap="innerHTML">
+    {{if .ThumbnailReady}}<img src="/images/{{.ID}}/thumbnail" loading="lazy" alt="{{.OriginalFilename}}">{{else}}<div class="placeholder">Processing…</div>{{end}}
+  </a>
+  <div class="caption"><span class="name" title="{{.OriginalFilename}}">{{.OriginalFilename}}</span><span class="muted small">{{.UploaderNickname}}</span>
+    <span id="tile-rating-{{.ID}}" class="stars">{{template "stars" .RatingValue}}</span></div>
+</div>{{end}}

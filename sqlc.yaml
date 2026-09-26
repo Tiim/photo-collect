@@ -1,0 +1,11 @@
+version: "2"
+sql:
+  - engine: sqlite
+    schema: migrations
+    queries: internal/database/queries
+    gen:
+      go:
+        package: sqlc
+        out: internal/database/sqlc
+        emit_json_tags: false
+        emit_interface: false

@@ -1,0 +1,29 @@
+{{define "content"}}
+{{with .Data}}
+<div class="narrow">
+<h1>Upload photos</h1>
+<p>Folder: <strong>{{.FolderName}}</strong></p>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+{{if .Nickname}}
+  <p>Uploading as <strong>{{.Nickname}}</strong>
+    <form method="post" action="/upload/{{.Token}}/nickname/clear" class="inline"><button class="link" type="submit">Not you?</button></form>
+  </p>
+  <div id="dropzone" class="dropzone" data-url="/upload/{{.Token}}/images" data-max-files="{{.MaxFiles}}">
+    <p>Drag &amp; drop photos here</p>
+    <p class="muted">or</p>
+    <label class="button">Choose photos<input id="file-input" type="file" multiple accept="image/*,.heic,.heif" hidden></label>
+    <p class="muted small">JPEG, PNG, WebP and HEIC · up to {{.MaxSizeMB}} MB each</p>
+  </div>
+  <ul id="upload-list" class="upload-list"></ul>
+{{else}}
+  <form method="post" action="/upload/{{.Token}}/nickname" class="stack">
+    <label>Your nickname
+      <input type="text" name="nickname" maxlength="40" required autofocus autocomplete="nickname">
+    </label>
+    <p class="muted small">Your nickname is shown next to the photos you upload.</p>
+    <button type="submit">Continue</button>
+  </form>
+{{end}}
+</div>
+{{end}}
+{{end}}

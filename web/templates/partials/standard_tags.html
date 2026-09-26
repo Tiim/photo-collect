@@ -1,0 +1,13 @@
+{{define "standard_tags"}}
+<div id="std-tags" hx-target="this" hx-swap="outerHTML">
+  <ul class="tags">
+    {{range .Tags}}<li>{{.Name}} <button type="button" class="x" title="Remove" hx-post="/folders/{{$.FolderID}}/standard-tags/{{.ID}}/delete">×</button></li>
+    {{else}}<li class="muted">None</li>{{end}}
+  </ul>
+  <form hx-post="/folders/{{.FolderID}}/standard-tags" class="row">
+    <input type="text" name="name" placeholder="Add standard tag" maxlength="64" required>
+    <button type="submit">Add</button>
+  </form>
+  <p class="muted small">Applied automatically to images uploaded from now on.</p>
+</div>
+{{end}}
