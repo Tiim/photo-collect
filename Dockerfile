@@ -3,7 +3,8 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/photos ./cmd/photos
+# nodynamic: stop purego (via gen2brain/heic) from dynamically linking libc, which Alpine lacks (glibc loader)
+RUN CGO_ENABLED=0 go build -tags nodynamic -trimpath -ldflags="-s -w" -o /out/photos ./cmd/photos
 
 FROM alpine:3.22
 RUN addgroup -g 65532 -S photos \
