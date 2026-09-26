@@ -50,6 +50,9 @@ func TestPagesRender(t *testing.T) {
 	}
 	if rec := e.do("GET", "/healthz", nil, nil); rec.Code != 200 {
 		t.Errorf("healthz: %d", rec.Code)
+	} else if got := rec.Header().Get("Referrer-Policy"); got != "same-origin" {
+		// "no-referrer" makes browsers send "Origin: null" on form posts, breaking the CSRF origin check.
+		t.Errorf("Referrer-Policy = %q, want same-origin", got)
 	}
 	if rec := e.do("GET", "/readyz", nil, nil); rec.Code != 200 {
 		t.Errorf("readyz: %d", rec.Code)

@@ -53,8 +53,11 @@ func (s *Server) auth(next http.HandlerFunc) http.Handler {
 			if tok == "" {
 				tok = r.PostFormValue("csrf")
 			}
-			if !s.sameOrigin(r) || subtle.ConstantTimeCompare([]byte(tok), []byte(sess.CSRFToken)) != 1 {
-				s.log.Warn("csrf check failed", "route", routeLabel(r), "user_id", sess.UserID)
+			originOK := s.sameOrigin(r)
+			tokenOK := subtle.ConstantTimeCompare([]byte(tok), []byte(sess.CSRFToken)) == 1
+			if !originOK || !tokenOK {
+				s.log.Warn("csrf check failed", "route", routeLabel(r), "user_id", sess.UserID,
+					"origin", r.Header.Get("Origin"), "origin_ok", originOK, "token_present", tok != "", "token_ok", tokenOK)
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
@@ -83,8 +86,11 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
-		// Upload links are bearer tokens in the URL: never leak them via Referer.
-		h.Set("Referrer-Policy", "no-referrer")
+		// Upload links are bearer tokens in the URL: never leak them via Referer to
+		// other sites. "same-origin" (rather than "no-referrer") is needed because
+		// browsers send "Origin: null" on form posts under no-referrer, which would
+		// defeat our Origin check.
+		h.Set("Referrer-Policy", "same-origin")
 		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'")
 		if s.secure {
 			h.Set("Strict-Transport-Security", "max-age=31536000")

@@ -1,4 +1,4 @@
-.PHONY: generate build test run
+.PHONY: generate build test run check-generated
 
 generate:
 	go tool sqlc generate
@@ -13,3 +13,7 @@ test:
 # Fails if generated sqlc code is out of date (use in CI).
 check-generated:
 	go tool sqlc diff
+
+# Run locally with variables from .env (which is git-ignored).
+run:
+	set -a && . ./.env && set +a && go run ./cmd/photos
