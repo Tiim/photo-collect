@@ -141,3 +141,28 @@ func TestContractReal(t *testing.T) {
 	}
 	storagetest.Run(t, s)
 }
+
+// Hetzner answers a PROPFIND on a bare directory path with a 301 to the
+// slash-terminated path; the client follows it as a plain GET (200, not 207).
+func TestPingDirectoryRedirect(t *testing.T) {
+	ctx := context.Background()
+	srv := newServer(t, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "PROPFIND" && r.URL.Path != "/" && r.URL.Path[len(r.URL.Path)-1] != '/' {
+				http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
+				return
+			}
+			if r.Method == http.MethodGet && r.URL.Path[len(r.URL.Path)-1] == '/' {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
+	opts := webdav.Options{URL: srv.URL, BasePath: "/imagecollect"}
+	for i := 0; i < 2; i++ { // second pass: directory already exists
+		if _, err := webdav.New(ctx, opts); err != nil {
+			t.Fatalf("attempt %d: %v", i+1, err)
+		}
+	}
+}

@@ -72,10 +72,9 @@ func (s *Store) Ping(ctx context.Context) error {
 	}
 	// OPTIONS alone succeeds on servers without WebDAV enabled, so probe with
 	// PROPFIND (Stat) on the base path instead.
-	root := s.base
-	if root == "" {
-		root = "/"
-	}
+	// Directories are probed with a trailing slash: servers like Hetzner answer
+	// a bare directory path with a 301, which the client follows as a plain GET.
+	root := s.base + "/"
 	err := retry(ctx, func() error { _, err := s.c.Stat(root); return err })
 	if gowebdav.IsErrNotFound(err) && s.base != "" {
 		err = retry(ctx, func() error { return s.c.MkdirAll(s.base, 0o755) })
