@@ -1,7 +1,8 @@
 # Example deployment: single container, SQLite + filesystem storage in one volume.
 services:
   photos:
-    build: .
+    image: ghcr.io/tiim/photo-collect:edge
+    # build: .   # or build from source
     restart: unless-stopped
     ports: ["8080:8080"]
     volumes:

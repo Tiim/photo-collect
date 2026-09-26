@@ -9,8 +9,12 @@ See [docs/spec.md](docs/spec.md) for the requirements.
 ## Running
 
 ```sh
-docker compose -f docker-compose.example.yml up --build
+docker compose -f docker-compose.example.yml up
 ```
+
+This pulls the prebuilt image `ghcr.io/tiim/photo-collect` (tags: `edge` = latest `main`,
+`X.Y.Z` / `X.Y` for releases, `sha-<commit>`). To build from source instead, swap the
+`image:` line for `build: .` in the compose file and run `up --build`.
 
 The container persists everything under `/data` (`photos.db`, `photos/`, `exports/`).
 
