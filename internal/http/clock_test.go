@@ -63,7 +63,7 @@ func TestCaptureTimeInUI(t *testing.T) {
 		t.Helper()
 		img, err := e.db.Q.InsertImage(ctx, sqlc.InsertImageParams{
 			ID: id, FolderID: f.ID, OriginalFilename: id + ".jpg", MimeType: "image/jpeg", SizeBytes: 10, Width: 1, Height: 1,
-			Sha256: strings.Repeat("a", 64), UploaderNickname: "Tim",
+			Sha256: id + strings.Repeat("a", 64-len(id)), UploaderNickname: "Tim",
 			DeviceKey: sqlNullStr(device), ExifTime: sqlNullStr(exif),
 		})
 		if err != nil {

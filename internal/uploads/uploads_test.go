@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -44,7 +45,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	queue := jobs.New(db, log)
-	(&jobs.Handlers{DB: db, Store: store, Processor: images.NewGoProcessor(40, 80, 1), ExportDir: dir, Log: log}).Register(queue)
+	(&jobs.Handlers{DB: db, Store: store, Processor: images.NewGoProcessor(40, 80, 1), Queue: queue, ExportDir: dir, Log: log}).Register(queue)
 	go queue.Run(ctx, 2)
 
 	f, err := db.Q.CreateFolder(ctx, sqlc.CreateFolderParams{ID: domain.NewID(), Name: "party"})
@@ -137,7 +138,9 @@ func TestCalibrationCorrectsSameDeviceOnly(t *testing.T) {
 	f.upload("Tim", "b.jpg", imagetest.JPEG(64, 48, iphone("2026-09-26T12:00:00")))
 	f.upload("Tim", "e.jpg", imagetest.JPEG(64, 48, iphone("2026-09-26T14:30:00")))
 	// Same model but another person, and a different camera without any calibration.
-	f.upload("Bob", "bob.jpg", imagetest.JPEG(64, 48, iphone("2026-09-26T10:00:00")))
+	// (Distinct pixel size so this isn't byte-identical to a.jpg: they're
+	// different people's photos that merely share a timestamp and model.)
+	f.upload("Bob", "bob.jpg", imagetest.JPEG(65, 48, iphone("2026-09-26T10:00:00")))
 	f.upload("Tim", "pixel.jpg", imagetest.JPEG(64, 48, pixel("2026-09-26T10:00:00")))
 	f.upload("Tim", "noexif.jpg", imagetest.PlainJPEG(64, 48))
 
@@ -203,6 +206,87 @@ func TestCalibrationWithoutExifTimeIsHarmless(t *testing.T) {
 	}
 	f.wantOffset("a.jpg", nil)
 	f.wantOffset("c.jpg", nil)
+}
+
+// A byte-identical re-upload into the same folder is skipped: no second
+// image row is created and the existing image is handed back, so a guest
+// who double-uploads the same photo notices nothing.
+func TestExactDuplicateUploadIsSkipped(t *testing.T) {
+	f := newFixture(t)
+	data := imagetest.JPEG(64, 48, iphone("2026-09-26T10:00:00"))
+
+	first, err := f.svc.Ingest(f.ctx, f.folder, "Tim", "a.jpg", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := f.svc.Ingest(f.ctx, f.folder, "Tim", "a-copy.jpg", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("skip returned a different image: %s vs %s", second.ID, first.ID)
+	}
+	count, err := f.db.Q.CountImagesInFolder(f.ctx, f.folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("images in folder = %d, want 1", count)
+	}
+
+	// A genuinely different photo, and the same bytes in a different folder,
+	// are unaffected (per-folder scope only).
+	other, err := f.db.Q.CreateFolder(f.ctx, sqlc.CreateFolderParams{ID: domain.NewID(), Name: "other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	elsewhere, err := f.svc.Ingest(f.ctx, other.ID, "Tim", "a.jpg", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elsewhere.ID == first.ID {
+		t.Fatal("upload into a different folder must not be skipped")
+	}
+}
+
+// Concurrent uploads of the same file into the same folder must still
+// result in exactly one image row: the skip has to be race-safe, not just
+// correct for sequential requests.
+func TestExactDuplicateUploadRaceIsSafe(t *testing.T) {
+	f := newFixture(t)
+	data := imagetest.JPEG(64, 48, iphone("2026-09-26T10:00:00"))
+	const n = 8
+
+	results := make([]*sqlc.Image, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			results[i], errs[i] = f.svc.Ingest(f.ctx, f.folder, "Tim", "a.jpg", bytes.NewReader(data))
+		}(i)
+	}
+	wg.Wait()
+
+	var id string
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("upload %d: %v", i, err)
+		}
+		if id == "" {
+			id = results[i].ID
+		} else if results[i].ID != id {
+			t.Fatalf("upload %d returned %s, want %s", i, results[i].ID, id)
+		}
+	}
+	count, err := f.db.Q.CountImagesInFolder(f.ctx, f.folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("images in folder = %d, want 1", count)
+	}
 }
 
 func TestRecomputeIsScopedToFolder(t *testing.T) {

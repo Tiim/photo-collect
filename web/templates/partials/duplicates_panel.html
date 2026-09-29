@@ -1,0 +1,32 @@
+{{define "duplicates_panel"}}
+{{if .Pending}}
+<section class="panel duplicates" id="duplicates-{{.FolderID}}">
+  <h2>Possible duplicates <span class="muted small">({{len .Pending}})</span></h2>
+  {{$folderID := .FolderID}}
+  {{range .Pending}}
+  <div class="dup-pair" id="dup-{{.ID}}">
+    <div class="dup-side">
+      <a href="/images/{{.ImageIDA}}" hx-get="/images/{{.ImageIDA}}" hx-target="#modal" hx-swap="innerHTML">
+        <img src="/images/{{.ImageIDA}}/thumbnail" loading="lazy" alt="{{.AFilename}}">
+      </a>
+      <span class="muted small" title="{{.AFilename}}">{{.AFilename}}</span>
+      <button hx-post="/duplicates/{{.ID}}/resolve" hx-vals='{"keep":"{{.ImageIDA}}"}' hx-target="#duplicates-{{$folderID}}" hx-swap="outerHTML"
+              hx-confirm="Keep this photo and delete the other one? Its tags and rating will be merged onto this one.">Keep this one</button>
+    </div>
+    <div class="dup-side">
+      <a href="/images/{{.ImageIDB}}" hx-get="/images/{{.ImageIDB}}" hx-target="#modal" hx-swap="innerHTML">
+        <img src="/images/{{.ImageIDB}}/thumbnail" loading="lazy" alt="{{.BFilename}}">
+      </a>
+      <span class="muted small" title="{{.BFilename}}">{{.BFilename}}</span>
+      <button hx-post="/duplicates/{{.ID}}/resolve" hx-vals='{"keep":"{{.ImageIDB}}"}' hx-target="#duplicates-{{$folderID}}" hx-swap="outerHTML"
+              hx-confirm="Keep this photo and delete the other one? Its tags and rating will be merged onto this one.">Keep this one</button>
+    </div>
+    <div class="dup-meta">
+      <span class="muted small">Similar image (distance {{.Distance}})</span>
+      <button class="secondary" hx-post="/duplicates/{{.ID}}/dismiss" hx-target="#duplicates-{{$folderID}}" hx-swap="outerHTML">Not a duplicate</button>
+    </div>
+  </div>
+  {{end}}
+</section>
+{{end}}
+{{end}}

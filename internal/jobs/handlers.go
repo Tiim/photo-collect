@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/bits"
 	"os"
 	"path/filepath"
 
@@ -23,6 +24,7 @@ type Handlers struct {
 	DB        *database.DB
 	Store     storage.Store
 	Processor images.Processor
+	Queue     *Queue
 	ExportDir string
 	Log       *slog.Logger
 }
@@ -32,6 +34,7 @@ func (h *Handlers) Register(q *Queue) {
 	q.Handle(TypeDeriveImage, h.deriveImage)
 	q.Handle(TypeAnalyzeImage, h.analyzeImage)
 	q.Handle(TypeDeleteFolder, h.deleteFolder)
+	q.Handle(TypeScanFolderDuplicates, h.scanFolderDuplicates)
 }
 
 func (h *Handlers) deriveImage(ctx context.Context, raw json.RawMessage) error {
@@ -67,7 +70,58 @@ func (h *Handlers) deriveImage(ctx context.Context, raw json.RawMessage) error {
 	if err := h.Store.Put(ctx, storage.ThumbnailKey(img.FolderID, img.ID), bytes.NewReader(d.Thumbnail), int64(len(d.Thumbnail)), "image/jpeg"); err != nil {
 		return fmt.Errorf("store thumbnail: %w", err)
 	}
-	return h.DB.Q.MarkThumbnailReady(ctx, img.ID)
+	if err := h.DB.Q.MarkThumbnailReady(ctx, img.ID); err != nil {
+		return err
+	}
+
+	if !d.PHashOK {
+		return nil
+	}
+	if err := h.DB.Q.SetImagePHash(ctx, sqlc.SetImagePHashParams{
+		Phash: sql.NullInt64{Int64: int64(d.PHash), Valid: true}, ID: img.ID,
+	}); err != nil {
+		return err
+	}
+	// Debounce the folder's duplicate scan again now that this image's hash
+	// is actually available, in case the scan already fired earlier.
+	return h.Queue.ScheduleFolderScan(ctx, h.DB.Q, img.FolderID)
+}
+
+// scanFolderDuplicates compares every image's perceptual hash against every
+// other in the folder and flags near-duplicate pairs for manual review.
+// Exact byte-identical duplicates never reach this: they are skipped at
+// upload time (see uploads.Service.Ingest), so every flagged pair here is a
+// perceptual (not exact) match.
+func (h *Handlers) scanFolderDuplicates(ctx context.Context, raw json.RawMessage) error {
+	var p ScanFolderDuplicatesPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return err
+	}
+	rows, err := h.DB.Q.ListAllImageHashesInFolder(ctx, p.FolderID)
+	if err != nil {
+		return err
+	}
+	return h.DB.InTx(ctx, func(q *sqlc.Queries) error {
+		for i := 0; i < len(rows); i++ {
+			for j := i + 1; j < len(rows); j++ {
+				dist := bits.OnesCount64(uint64(rows[i].Phash.Int64) ^ uint64(rows[j].Phash.Int64))
+				if dist > DuplicateHashThreshold {
+					continue
+				}
+				a, b := rows[i].ID, rows[j].ID
+				if a > b {
+					a, b = b, a
+				}
+				if err := q.InsertImageDuplicate(ctx, sqlc.InsertImageDuplicateParams{
+					ID: domain.NewID(), FolderID: p.FolderID, ImageIDA: a, ImageIDB: b,
+					Distance: int64(dist),
+				}); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
 }
 
 // analyzeImage looks for a clock-calibration QR code in the image. A hit marks

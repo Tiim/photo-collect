@@ -12,6 +12,8 @@
   <div class="panel"><h2>Downloads</h2>{{template "exports" .Exports}}</div>
 </section>
 
+{{template "duplicates_panel" .Duplicates}}
+
 {{if .Devices}}
 <details class="devices">
   <summary>Camera clocks ({{len .Devices}})</summary>

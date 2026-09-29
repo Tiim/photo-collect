@@ -66,13 +66,14 @@ type StdTagsView struct {
 }
 
 type FolderPage struct {
-	Folder  sqlc.Folder
-	Tags    StdTagsView
-	Link    LinkView
-	Exports ExportsView
-	Grid    GridView
-	Count   int64
-	Devices []DeviceRow
+	Folder     sqlc.Folder
+	Tags       StdTagsView
+	Link       LinkView
+	Exports    ExportsView
+	Grid       GridView
+	Count      int64
+	Devices    []DeviceRow
+	Duplicates DuplicatesView
 }
 
 // ---- handlers ----
@@ -127,7 +128,9 @@ func (s *Server) folderShow(w http.ResponseWriter, r *http.Request) {
 			if p.Exports, err = s.exportsView(ctx, f.ID); err == nil {
 				if p.Grid, err = s.gridView(ctx, f.ID, math.MaxInt64); err == nil {
 					if p.Count, err = s.db.Q.CountImagesInFolder(ctx, f.ID); err == nil {
-						p.Devices, err = s.devicesView(ctx, f.ID)
+						if p.Devices, err = s.devicesView(ctx, f.ID); err == nil {
+							p.Duplicates, err = s.duplicatesView(ctx, f.ID)
+						}
 					}
 				}
 			}

@@ -17,10 +17,11 @@ import (
 
 // Job types.
 const (
-	TypeDeriveImage  = "derive_image"
-	TypeAnalyzeImage = "analyze_image"
-	TypeDeleteFolder = "delete_folder"
-	TypeBuildExport  = "build_export"
+	TypeDeriveImage          = "derive_image"
+	TypeAnalyzeImage         = "analyze_image"
+	TypeDeleteFolder         = "delete_folder"
+	TypeBuildExport          = "build_export"
+	TypeScanFolderDuplicates = "scan_folder_duplicates"
 )
 
 // Job payloads.
@@ -37,6 +38,9 @@ type (
 	ExportPayload struct {
 		ExportID string `json:"export_id"`
 	}
+	ScanFolderDuplicatesPayload struct {
+		FolderID string `json:"folder_id"`
+	}
 )
 
 const (
@@ -44,6 +48,15 @@ const (
 	pollInterval = 2 * time.Second
 	// A running job untouched for this long is assumed to belong to a crashed worker.
 	leaseTimeout = 30 * time.Minute
+
+	// DuplicateHashThreshold is the maximum dHash Hamming distance (0-64)
+	// for two images to be flagged as near-duplicates. Kept conservative to
+	// favor fewer false positives.
+	DuplicateHashThreshold = 6
+	// duplicateScanDebounce is how long after the last relevant event
+	// (upload, hash computed) a folder's duplicate scan waits before running,
+	// so a burst of uploads produces one scan instead of one per photo.
+	duplicateScanDebounce = 30 * time.Second
 )
 
 // Handler processes a job. It must be idempotent: jobs may run more than once.
@@ -76,6 +89,30 @@ func (q *Queue) Enqueue(ctx context.Context, qs *sqlc.Queries, typ string, paylo
 	}
 	q.Notify()
 	return nil
+}
+
+// ScheduleFolderScan debounces a duplicate-detection scan for folderID: if
+// one is already pending, its run time is pushed further into the future;
+// otherwise a new job is queued. Called both when a new upload lands and
+// again once that upload's perceptual hash finishes computing, so the scan
+// always runs a fixed delay after the last such event.
+func (q *Queue) ScheduleFolderScan(ctx context.Context, qs *sqlc.Queries, folderID string) error {
+	payload, err := json.Marshal(ScanFolderDuplicatesPayload{FolderID: folderID})
+	if err != nil {
+		return err
+	}
+	runAt := database.Time(time.Now().Add(duplicateScanDebounce))
+	n, err := qs.RescheduleJobByPayload(ctx, sqlc.RescheduleJobByPayloadParams{
+		RunAt: runAt, Type: TypeScanFolderDuplicates, Payload: string(payload),
+	})
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	_, err = qs.EnqueueJob(ctx, sqlc.EnqueueJobParams{Type: TypeScanFolderDuplicates, Payload: string(payload), RunAt: runAt})
+	return err
 }
 
 // Notify wakes idle workers. Safe to call at any time.

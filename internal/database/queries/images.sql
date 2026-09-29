@@ -34,6 +34,21 @@ UPDATE images SET preview_ready = 1 WHERE id = ?;
 -- name: GetImageUnchecked :one
 SELECT * FROM images WHERE id = ?;
 
+-- name: GetImageBySha256InFolder :one
+SELECT * FROM images WHERE folder_id = ? AND sha256 = ?;
+
+-- name: SetImagePHash :exec
+UPDATE images SET phash = ? WHERE id = ?;
+
+-- name: ListAllImageHashesInFolder :many
+SELECT id, phash FROM images WHERE folder_id = ? AND phash IS NOT NULL;
+
+-- name: ListImagesMissingPHash :many
+SELECT id, folder_id FROM images WHERE phash IS NULL;
+
+-- name: HardDeleteImage :execrows
+DELETE FROM images WHERE id = ?;
+
 -- name: ListExportImages :many
 SELECT i.* FROM export_images ei
 JOIN images i ON i.id = ei.image_id

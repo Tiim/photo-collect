@@ -13,6 +13,9 @@ import (
 	"log/slog"
 	"os"
 
+	"modernc.org/sqlite"
+	sqlitelib "modernc.org/sqlite/lib"
+
 	"github.com/tiim/photo-collect/internal/database"
 	"github.com/tiim/photo-collect/internal/database/sqlc"
 	"github.com/tiim/photo-collect/internal/domain"
@@ -20,6 +23,11 @@ import (
 	"github.com/tiim/photo-collect/internal/jobs"
 	"github.com/tiim/photo-collect/internal/storage"
 )
+
+// errDuplicateRace signals that InsertImage lost a race against a concurrent
+// upload of the same file (same folder, same SHA-256): the caller should
+// return the winner's image rather than propagate this as a failure.
+var errDuplicateRace = errors.New("uploads: concurrent duplicate upload")
 
 var (
 	ErrTooLarge   = errors.New("file is too large")
@@ -81,6 +89,20 @@ func (s *Service) Ingest(ctx context.Context, folderID, nickname, filename strin
 		return nil, err
 	}
 
+	sha256Hex := hex.EncodeToString(h.Sum(nil))
+
+	// Fast path: an exact byte-identical copy already exists in this folder.
+	// Skip the upload entirely (no storage write, no new row) and hand back
+	// the existing image, so a guest who double-uploads the same photo
+	// notices nothing.
+	if existing, err := s.db.Q.GetImageBySha256InFolder(ctx, sqlc.GetImageBySha256InFolderParams{
+		FolderID: folderID, Sha256: sha256Hex,
+	}); err == nil {
+		return &existing, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
 	imageID := domain.NewID()
 	key := storage.OriginalKey(folderID, imageID)
 	if err := s.store.Put(ctx, key, tmp, n, info.MIME); err != nil {
@@ -101,12 +123,17 @@ func (s *Service) Ingest(ctx context.Context, folderID, nickname, filename strin
 			SizeBytes:        n,
 			Width:            int64(info.Width),
 			Height:           int64(info.Height),
-			Sha256:           hex.EncodeToString(h.Sum(nil)),
+			Sha256:           sha256Hex,
 			UploaderNickname: nickname,
 			DeviceKey:        sql.NullString{String: deviceKey, Valid: deviceKey != ""},
 			ExifTime:         sql.NullString{String: meta.TakenAt.Format(images.WallTimeLayout), Valid: !meta.TakenAt.IsZero()},
 		})
 		if err != nil {
+			var sqliteErr *sqlite.Error
+			if errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlitelib.SQLITE_CONSTRAINT_UNIQUE {
+				// Lost a race against a concurrent upload of the same file.
+				return errDuplicateRace
+			}
 			return err
 		}
 		if err := s.applyInitialTags(ctx, q, folderID, imageID, nickname); err != nil {
@@ -115,8 +142,23 @@ func (s *Service) Ingest(ctx context.Context, folderID, nickname, filename strin
 		if err := s.queue.Enqueue(ctx, q, jobs.TypeDeriveImage, jobs.DerivePayload{ImageID: imageID}); err != nil {
 			return err
 		}
-		return s.queue.Enqueue(ctx, q, jobs.TypeAnalyzeImage, jobs.AnalyzePayload{ImageID: imageID})
+		if err := s.queue.Enqueue(ctx, q, jobs.TypeAnalyzeImage, jobs.AnalyzePayload{ImageID: imageID}); err != nil {
+			return err
+		}
+		return s.queue.ScheduleFolderScan(ctx, q, folderID)
 	})
+	if errors.Is(err, errDuplicateRace) {
+		if delErr := s.store.Delete(context.WithoutCancel(ctx), key); delErr != nil {
+			s.log.Error("cleanup orphaned original", "key", key, "err", delErr)
+		}
+		existing, err := s.db.Q.GetImageBySha256InFolder(ctx, sqlc.GetImageBySha256InFolderParams{
+			FolderID: folderID, Sha256: sha256Hex,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &existing, nil
+	}
 	if err != nil {
 		// Don't leave an orphaned object behind.
 		if delErr := s.store.Delete(context.WithoutCancel(ctx), key); delErr != nil {

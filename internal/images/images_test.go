@@ -122,6 +122,65 @@ func TestDerive(t *testing.T) {
 	}
 }
 
+// solidImage returns a uniform image, visually unlike the gradient testImage
+// produces, for testing perceptual-hash distance.
+func solidImage(w, h int) image.Image {
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{20, 200, 60, 255})
+		}
+	}
+	return img
+}
+
+func hammingDistance(a, b uint64) int {
+	d := 0
+	for x := a ^ b; x != 0; x &= x - 1 {
+		d++
+	}
+	return d
+}
+
+// TestDerivePHash checks that the perceptual hash computed by Derive treats
+// the same picture re-encoded in a different container as near-identical,
+// and a visually different picture as far apart, at the threshold this
+// feature uses to flag near-duplicates (jobs.DuplicateHashThreshold = 6).
+func TestDerivePHash(t *testing.T) {
+	p := NewGoProcessor(50, 100, 1)
+	ctx := context.Background()
+
+	jpg, err := p.Derive(ctx, bytes.NewReader(jpegBytes(t, 400, 200)), "image/jpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	png, err := p.Derive(ctx, bytes.NewReader(pngBytes(t, 400, 200)), "image/png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !jpg.PHashOK || !png.PHashOK {
+		t.Fatal("expected PHashOK for both")
+	}
+	if d := hammingDistance(jpg.PHash, png.PHash); d > 6 {
+		t.Errorf("same picture, different container: distance = %d, want <= 6", d)
+	}
+
+	var solid bytes.Buffer
+	if err := jpeg.Encode(&solid, solidImage(400, 200), nil); err != nil {
+		t.Fatal(err)
+	}
+	other, err := p.Derive(ctx, bytes.NewReader(solid.Bytes()), "image/jpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !other.PHashOK {
+		t.Fatal("expected PHashOK")
+	}
+	if d := hammingDistance(jpg.PHash, other.PHash); d <= 6 {
+		t.Errorf("visually different pictures: distance = %d, want > 6", d)
+	}
+}
+
 func TestExifOrientation(t *testing.T) {
 	// Big-endian TIFF with one IFD entry: Orientation = 6.
 	tiff := []byte{'M', 'M', 0, 42, 0, 0, 0, 8, 0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0}

@@ -9,6 +9,7 @@ import (
 	"image/jpeg"
 	"io"
 
+	"github.com/corona10/goimagehash"
 	"golang.org/x/image/draw"
 )
 
@@ -16,6 +17,12 @@ import (
 type Derived struct {
 	Thumbnail []byte
 	Preview   []byte
+	// PHash is a 64-bit perceptual difference hash (dHash) of the original,
+	// used to flag near-duplicate (resized/re-encoded) uploads. PHashOK is
+	// false if hashing failed (e.g. a degenerate image); callers must not
+	// treat PHash as meaningful in that case.
+	PHash   uint64
+	PHashOK bool
 }
 
 // Processor generates derivative images from originals. It exists so the rest
@@ -68,6 +75,11 @@ func (p *GoProcessor) Derive(ctx context.Context, original io.Reader, mime strin
 	img = applyOrientation(img, orientation)
 
 	var d Derived
+	// Non-fatal: duplicate detection is a bonus feature, not core to
+	// deriving usable thumbnails/previews.
+	if hash, hashErr := goimagehash.DifferenceHash(img); hashErr == nil {
+		d.PHash, d.PHashOK = hash.GetHash(), true
+	}
 	if d.Preview, err = encodeScaled(img, p.previewSize, 85); err != nil {
 		return nil, err
 	}

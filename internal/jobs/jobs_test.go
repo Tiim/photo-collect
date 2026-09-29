@@ -89,6 +89,54 @@ func TestFailedJobIsRescheduled(t *testing.T) {
 	}
 }
 
+// ScheduleFolderScan debounces: two calls close together for the same
+// folder must leave exactly one pending scan job, with its run_at pushed
+// out by the later call rather than a second job being stacked.
+func TestScheduleFolderScanDebounces(t *testing.T) {
+	db := open(t)
+	q := jobs.New(db, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := context.Background()
+
+	if err := q.ScheduleFolderScan(ctx, db.Q, "f1"); err != nil {
+		t.Fatal(err)
+	}
+	var firstRunAt string
+	if err := db.QueryRow(`SELECT run_at FROM jobs WHERE type = 'scan_folder_duplicates'`).Scan(&firstRunAt); err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(10 * time.Millisecond)
+	if err := q.ScheduleFolderScan(ctx, db.Q, "f1"); err != nil {
+		t.Fatal(err)
+	}
+
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE type = 'scan_folder_duplicates'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("jobs = %d, want 1 (debounced)", count)
+	}
+	var secondRunAt string
+	if err := db.QueryRow(`SELECT run_at FROM jobs WHERE type = 'scan_folder_duplicates'`).Scan(&secondRunAt); err != nil {
+		t.Fatal(err)
+	}
+	if secondRunAt <= firstRunAt {
+		t.Fatalf("run_at not pushed out: %s -> %s", firstRunAt, secondRunAt)
+	}
+
+	// A different folder gets its own, independent pending job.
+	if err := q.ScheduleFolderScan(ctx, db.Q, "f2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE type = 'scan_folder_duplicates'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("jobs = %d, want 2 (one per folder)", count)
+	}
+}
+
 func TestOrphanedRunningJobIsRequeuedOnStart(t *testing.T) {
 	db := open(t)
 	// Simulate a crash mid-job.

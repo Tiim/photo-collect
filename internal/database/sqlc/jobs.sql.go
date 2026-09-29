@@ -163,6 +163,25 @@ func (q *Queries) RequeueStaleJobs(ctx context.Context, startedAt sql.NullString
 	return result.RowsAffected()
 }
 
+const rescheduleJobByPayload = `-- name: RescheduleJobByPayload :execrows
+UPDATE jobs SET run_at = ?
+WHERE type = ? AND status = 'pending' AND payload = ?
+`
+
+type RescheduleJobByPayloadParams struct {
+	RunAt   string
+	Type    string
+	Payload string
+}
+
+func (q *Queries) RescheduleJobByPayload(ctx context.Context, arg RescheduleJobByPayloadParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, rescheduleJobByPayload, arg.RunAt, arg.Type, arg.Payload)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const retryJobLater = `-- name: RetryJobLater :exec
 UPDATE jobs SET status = 'pending', run_at = ?, error = ?, started_at = NULL WHERE id = ?
 `

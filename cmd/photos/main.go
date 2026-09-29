@@ -113,6 +113,27 @@ func healthcheck() error {
 	return nil
 }
 
+// backfillPHashes re-enqueues thumbnail/preview derivation for every image
+// that predates the duplicate-detection feature (and so has no perceptual
+// hash yet), so existing folders get near-duplicate detection without a
+// dedicated periodic sweep. Re-running TypeDeriveImage is idempotent.
+func backfillPHashes(ctx context.Context, db *database.DB, queue *jobs.Queue, log *slog.Logger) error {
+	missing, err := db.Q.ListImagesMissingPHash(ctx)
+	if err != nil {
+		return err
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	log.Info("backfilling perceptual hashes", "count", len(missing))
+	for _, img := range missing {
+		if err := queue.Enqueue(ctx, db.Q, jobs.TypeDeriveImage, jobs.DerivePayload{ImageID: img.ID}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func serve(log *slog.Logger) error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -158,7 +179,10 @@ func serve(log *slog.Logger) error {
 
 	queue := jobs.New(db, log)
 	processor := images.NewGoProcessor(cfg.ThumbnailSize, cfg.PreviewSize, max(1, min(cfg.WorkerCount, runtime.NumCPU())))
-	(&jobs.Handlers{DB: db, Store: store, Processor: processor, ExportDir: cfg.ExportDir, Log: log}).Register(queue)
+	(&jobs.Handlers{DB: db, Store: store, Processor: processor, Queue: queue, ExportDir: cfg.ExportDir, Log: log}).Register(queue)
+	if err := backfillPHashes(ctx, db, queue, log); err != nil {
+		return fmt.Errorf("backfill perceptual hashes: %w", err)
+	}
 	dl, err := downloads.New(db, store, queue, cfg.ExportDir, cfg.ExportTTL, log)
 	if err != nil {
 		return err

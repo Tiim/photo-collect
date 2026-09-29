@@ -33,3 +33,7 @@ SELECT * FROM jobs WHERE status = 'failed' ORDER BY id DESC LIMIT 100;
 
 -- name: DeleteOldJobs :exec
 DELETE FROM jobs WHERE status = 'done' AND finished_at < ?;
+
+-- name: RescheduleJobByPayload :execrows
+UPDATE jobs SET run_at = ?
+WHERE type = ? AND status = 'pending' AND payload = ?;

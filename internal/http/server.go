@@ -104,6 +104,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /folders/{id}/downloads", s.auth(s.exportsPanel))
 	mux.Handle("POST /folders/{id}/downloads", s.auth(s.exportCreate))
 	mux.Handle("GET /downloads/{id}", s.auth(s.exportDownload))
+	mux.Handle("POST /duplicates/{id}/dismiss", s.auth(s.duplicateDismiss))
+	mux.Handle("POST /duplicates/{id}/resolve", s.auth(s.duplicateResolve))
 
 	mux.Handle("GET /images/{id}", s.auth(s.imageShow))
 	mux.Handle("GET /images/{id}/tile", s.auth(s.imageTile))

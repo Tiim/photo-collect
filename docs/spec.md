@@ -160,6 +160,24 @@ with each of their devices and upload the photo like any other.
   the XMP sidecar (`xmp:CreateDate`, `exif:DateTimeOriginal`) of corrected images.
 - Accuracy is about one second.
 
+### Duplicate detection
+
+The service flags duplicate photos within a folder; it never deletes anything automatically.
+
+- Exact, byte-identical re-uploads (same SHA-256) within the same folder are skipped silently at
+  upload time: no second image row or storage object is created, and the uploader sees a normal
+  success response. This is race-safe under concurrent uploads of the same file (enforced by a
+  database uniqueness constraint on folder + SHA-256, not just an application-level check).
+- Near-duplicates (the same picture re-encoded or resized) are detected via a perceptual hash
+  computed for every image and compared, within the same folder only, against every other image's
+  hash. A match flags the pair for manual review; both images are kept until a person acts.
+- Comparison runs in a background job, debounced to a fixed delay after the folder's last upload
+  or hash computation, so a burst of uploads triggers one scan rather than one per photo.
+- Only authenticated folder viewers/admins see flagged pairs and can resolve them (keep one and
+  delete the other, merging the deleted photo's tags and rating onto the kept one; or dismiss the
+  pair as not a duplicate). Anonymous uploaders never see any of this.
+- The similarity threshold is a fixed, conservative constant, not configurable per folder.
+
 ## 8. Generated images
 
 For every valid original image, the service shall asynchronously generate:
@@ -751,7 +769,6 @@ The initial implementation does not require:
 - Anonymous image deletion.
 - Anonymous image management.
 - Video uploads.
-- Duplicate/perceptual-image detection.
 - Full-text search.
 - Advanced filtering.
 - Audit logging.

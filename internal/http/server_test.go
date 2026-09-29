@@ -66,7 +66,7 @@ func setup(t *testing.T) *env {
 	signer := sessions.NewSigner(cfg.SessionSecret)
 	sm := sessions.NewManager(db, cfg.SessionTTL, false)
 	queue := jobs.New(db, log)
-	(&jobs.Handlers{DB: db, Store: store, Processor: images.NewGoProcessor(40, 80, 1), ExportDir: filepath.Join(dir, "exports"), Log: log}).Register(queue)
+	(&jobs.Handlers{DB: db, Store: store, Processor: images.NewGoProcessor(40, 80, 1), Queue: queue, ExportDir: filepath.Join(dir, "exports"), Log: log}).Register(queue)
 	dl, err := downloads.New(db, store, queue, filepath.Join(dir, "exports"), cfg.ExportTTL, log)
 	if err != nil {
 		t.Fatal(err)

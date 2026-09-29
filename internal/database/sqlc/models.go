@@ -59,6 +59,18 @@ type Image struct {
 	IsCalibration     int64
 	CalibRefTime      sql.NullString
 	TimeOffsetSeconds sql.NullInt64
+	Phash             sql.NullInt64
+}
+
+type ImageDuplicate struct {
+	ID         string
+	FolderID   string
+	ImageIDA   string
+	ImageIDB   string
+	Distance   int64
+	Status     string
+	CreatedAt  string
+	ResolvedAt sql.NullString
 }
 
 type ImageTag struct {
