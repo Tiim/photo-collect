@@ -142,12 +142,12 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 
 // List returns all keys with the given prefix. The prefix need not end at a
 // directory boundary; the walk starts at its deepest complete directory.
-func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
+func (s *Store) List(ctx context.Context, prefix string) ([]storage.ObjectInfo, error) {
 	start := ""
 	if i := strings.LastIndex(prefix, "/"); i >= 0 {
 		start = prefix[:i]
 	}
-	var keys []string
+	var objs []storage.ObjectInfo
 	var walk func(dir string) error
 	walk = func(dir string) error {
 		if err := ctx.Err(); err != nil {
@@ -179,7 +179,7 @@ func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
 				continue
 			}
 			if strings.HasPrefix(key, prefix) {
-				keys = append(keys, key)
+				objs = append(objs, storage.ObjectInfo{Key: key, Modified: fi.ModTime(), Size: fi.Size()})
 			}
 		}
 		return nil
@@ -187,8 +187,8 @@ func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
 	if err := walk(start); err != nil {
 		return nil, err
 	}
-	sort.Strings(keys)
-	return keys, nil
+	sort.Slice(objs, func(i, j int) bool { return objs[i].Key < objs[j].Key })
+	return objs, nil
 }
 
 // retry runs fn up to maxAttempts times, backing off on transient failures

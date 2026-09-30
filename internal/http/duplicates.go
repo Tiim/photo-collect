@@ -8,7 +8,7 @@ import (
 
 	"github.com/tiim/photo-collect/internal/database"
 	"github.com/tiim/photo-collect/internal/database/sqlc"
-	"github.com/tiim/photo-collect/internal/storage"
+	"github.com/tiim/photo-collect/internal/library"
 )
 
 // ---- view models ----
@@ -82,9 +82,10 @@ func (s *Server) duplicateDismiss(w http.ResponseWriter, r *http.Request) {
 	s.duplicatesResponse(w, r, d.FolderID)
 }
 
-// duplicateResolve keeps one image of a flagged pair and deletes the other:
-// tags are unioned onto the kept image, its rating is filled in only if it
-// had none, and the deleted image (row and storage objects) is removed.
+// duplicateResolve keeps one image of a flagged pair and moves the other to
+// the trash: tags are unioned onto the kept image and its rating is filled in
+// only if it had none. The trashed image can be restored or purged from the
+// trash view like any other.
 func (s *Server) duplicateResolve(w http.ResponseWriter, r *http.Request) {
 	d, ok := s.duplicate(w, r)
 	if !ok {
@@ -135,23 +136,13 @@ func (s *Server) duplicateResolve(w http.ResponseWriter, r *http.Request) {
 		}); err != nil {
 			return err
 		}
-		_, err = q.HardDeleteImage(r.Context(), del)
+		_, err = library.TrashIn(r.Context(), q, delImg.FolderID, []string{del}, sessionFrom(r.Context()).UserID)
 		return err
 	})
 	if err != nil {
 		s.serverError(w, r, err)
 		return
 	}
-
-	for _, key := range []string{
-		storage.OriginalKey(delImg.FolderID, del),
-		storage.PreviewKey(delImg.FolderID, del),
-		storage.ThumbnailKey(delImg.FolderID, del),
-	} {
-		if err := s.store.Delete(r.Context(), key); err != nil {
-			s.log.Error("cleanup deleted duplicate", "key", key, "err", err)
-		}
-	}
-	s.log.Info("duplicate resolved", "kept", keep, "deleted", del, "user_id", sessionFrom(r.Context()).UserID)
+	s.log.Info("duplicate resolved", "kept", keep, "trashed", del, "user_id", sessionFrom(r.Context()).UserID)
 	s.duplicatesResponse(w, r, d.FolderID)
 }

@@ -105,13 +105,18 @@ func (s *Service) Create(ctx context.Context, folderID, userID string, imageIDs 
 		if len(imageIDs) == 0 {
 			err = q.AddAllFolderImagesToExport(ctx, sqlc.AddAllFolderImagesToExportParams{ExportID: exp.ID, FolderID: folderID})
 		} else {
-			imgs, e := q.ListImagesByIDs(ctx, sqlc.ListImagesByIDsParams{FolderID: folderID, ImageIds: imageIDs})
-			if e != nil {
-				return e
-			}
-			for _, im := range imgs {
-				if err = q.AddExportImage(ctx, sqlc.AddExportImageParams{ExportID: exp.ID, ImageID: im.ID}); err != nil {
-					break
+			// In chunks: "all matching" a filter can be thousands of IDs.
+			for start := 0; start < len(imageIDs) && err == nil; start += 500 {
+				imgs, e := q.ListImagesByIDs(ctx, sqlc.ListImagesByIDsParams{
+					FolderID: folderID, ImageIds: imageIDs[start:min(start+500, len(imageIDs))],
+				})
+				if e != nil {
+					return e
+				}
+				for _, im := range imgs {
+					if err = q.AddExportImage(ctx, sqlc.AddExportImageParams{ExportID: exp.ID, ImageID: im.ID}); err != nil {
+						break
+					}
 				}
 			}
 		}
@@ -124,6 +129,14 @@ func (s *Service) Create(ctx context.Context, folderID, userID string, imageIDs 
 		return s.queue.Enqueue(ctx, q, jobs.TypeBuildExport, jobs.ExportPayload{ExportID: exp.ID})
 	})
 	return exp, err
+}
+
+// withGPS adds the image's position, if it has one, to the sidecar data.
+func withGPS(x XMPData, im sqlc.Image) XMPData {
+	if im.GpsLat.Valid && im.GpsLon.Valid {
+		x.HasGPS, x.Lat, x.Lon = true, im.GpsLat.Float64, im.GpsLon.Float64
+	}
+	return x
 }
 
 // FilePath returns the path of a ready export's ZIP file.
@@ -257,7 +270,7 @@ func (s *Service) writeZip(ctx context.Context, exp sqlc.Export) (int64, error) 
 		if im.TimeOffsetSeconds.Valid {
 			xmp.Captured, _ = images.CorrectedTime(im.ExifTime, im.TimeOffsetSeconds)
 		}
-		if _, err := xw.Write(BuildXMP(xmp)); err != nil {
+		if _, err := xw.Write(BuildXMP(withGPS(xmp, im))); err != nil {
 			return 0, err
 		}
 	}

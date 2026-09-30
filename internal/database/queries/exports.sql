@@ -6,7 +6,7 @@ INSERT OR IGNORE INTO export_images (export_id, image_id) VALUES (?, ?);
 
 -- name: AddAllFolderImagesToExport :exec
 INSERT INTO export_images (export_id, image_id)
-SELECT sqlc.arg(export_id), id FROM images WHERE folder_id = sqlc.arg(folder_id) AND is_calibration = 0;
+SELECT sqlc.arg(export_id), id FROM images WHERE folder_id = sqlc.arg(folder_id) AND is_calibration = 0 AND deleted_at IS NULL;
 
 -- name: GetExport :one
 SELECT * FROM exports WHERE id = ?;
@@ -34,4 +34,4 @@ SELECT id, file_key FROM exports WHERE folder_id = ? AND file_key IS NOT NULL;
 
 -- name: SumExportImageBytes :one
 SELECT CAST(COALESCE(SUM(i.size_bytes), 0) AS INTEGER) FROM export_images ei
-JOIN images i ON i.id = ei.image_id WHERE ei.export_id = ?;
+JOIN images i ON i.id = ei.image_id WHERE ei.export_id = ? AND i.deleted_at IS NULL;

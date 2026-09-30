@@ -28,6 +28,17 @@
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeModal(); } });
 
+  // Actions on the checked tiles: hx-confirm may contain "{n}", which is replaced
+  // by the number of selected photos. Nothing selected means nothing to confirm.
+  document.addEventListener('htmx:confirm', function (e) {
+    var q = e.detail.question;
+    if (!q || q.indexOf('{n}') < 0) { return; }
+    e.preventDefault();
+    var n = document.querySelectorAll('input.sel:checked').length;
+    if (n === 0) { return; }
+    if (window.confirm(q.replace('{n}', n))) { e.detail.issueRequest(true); }
+  });
+
   // ---- anonymous upload ----
   var zone = document.getElementById('dropzone');
   if (!zone) { return; }

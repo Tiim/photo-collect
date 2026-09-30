@@ -226,7 +226,7 @@ func TestExactDuplicateUploadIsSkipped(t *testing.T) {
 	if second.ID != first.ID {
 		t.Fatalf("skip returned a different image: %s vs %s", second.ID, first.ID)
 	}
-	count, err := f.db.Q.CountImagesInFolder(f.ctx, f.folder)
+	count, err := f.db.Q.CountAllImagesInFolder(f.ctx, f.folder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestExactDuplicateUploadRaceIsSafe(t *testing.T) {
 			t.Fatalf("upload %d returned %s, want %s", i, results[i].ID, id)
 		}
 	}
-	count, err := f.db.Q.CountImagesInFolder(f.ctx, f.folder)
+	count, err := f.db.Q.CountAllImagesInFolder(f.ctx, f.folder)
 	if err != nil {
 		t.Fatal(err)
 	}

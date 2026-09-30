@@ -3,6 +3,7 @@ package images
 import (
 	"database/sql"
 	"io"
+	"math"
 	"strings"
 	"time"
 
@@ -18,6 +19,19 @@ type Meta struct {
 	// TakenAt is the EXIF capture time as a naive wall-clock time (its fields
 	// are the clock reading, the location is always UTC). Zero if unknown.
 	TakenAt time.Time
+	// GPS position in decimal degrees (south and west negative). HasGPS is
+	// false when the image carries none or an implausible one.
+	Lat, Lon float64
+	HasGPS   bool
+}
+
+// ValidGPS reports whether lat/lon is a usable position: in range and not the
+// (0, 0) that cameras write when they have no fix.
+func ValidGPS(lat, lon float64) bool {
+	if math.IsNaN(lat) || math.IsNaN(lon) || math.Abs(lat) > 90 || math.Abs(lon) > 180 {
+		return false
+	}
+	return lat != 0 || lon != 0
 }
 
 // ReadMeta extracts camera metadata. Missing, unsupported or damaged EXIF is
@@ -34,6 +48,9 @@ func ReadMeta(r io.ReadSeeker) Meta {
 		Make:       strings.TrimSpace(ex.IFD0.Make),
 		Model:      strings.TrimSpace(ex.IFD0.Model),
 		BodySerial: strings.TrimSpace(ex.ExifIFD.BodySerialNumber),
+	}
+	if lat, lon := ex.GPS.Latitude(), ex.GPS.Longitude(); ValidGPS(lat, lon) {
+		m.Lat, m.Lon, m.HasGPS = lat, lon, true
 	}
 	t := ex.ExifIFD.DateTimeOriginal
 	if t.IsZero() {

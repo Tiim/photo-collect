@@ -97,8 +97,8 @@ func (s *Store) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
-	var keys []string
+func (s *Store) List(ctx context.Context, prefix string) ([]storage.ObjectInfo, error) {
+	var objs []storage.ObjectInfo
 	err := filepath.WalkDir(s.root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
@@ -118,12 +118,19 @@ func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
 		}
 		key := filepath.ToSlash(rel)
 		if strings.HasPrefix(key, prefix) {
-			keys = append(keys, key)
+			info, err := d.Info()
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			objs = append(objs, storage.ObjectInfo{Key: key, Modified: info.ModTime(), Size: info.Size()})
 		}
 		return nil
 	})
-	sort.Strings(keys)
-	return keys, err
+	sort.Slice(objs, func(i, j int) bool { return objs[i].Key < objs[j].Key })
+	return objs, err
 }
 
 func (s *Store) Ping(context.Context) error {

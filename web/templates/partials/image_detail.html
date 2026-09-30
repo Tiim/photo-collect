@@ -20,11 +20,18 @@
       <dt>Size</dt><dd>{{humanSize .SizeBytes}} · {{.Width}}×{{.Height}}</dd>
       <dt>Type</dt><dd>{{.MimeType}}</dd>
     </dl>
+    {{with .Map}}
+    <h3>Location</h3>
+    <div class="map" data-lat="{{.Lat}}" data-lon="{{.Lon}}"><p class="muted small">Loading map…</p></div>
+    {{end}}
     <h3>Rating</h3>
     {{template "rating" .TileView}}
     <h3>Tags</h3>
     {{template "image_tags" .Tags}}
-    <p><a class="button" href="/images/{{.ID}}/original?download=1">Download original</a></p>
+    <p class="tile-actions">
+      <a class="button" href="/images/{{.ID}}/original?download=1">Download original</a>
+      <button class="danger" hx-post="/images/{{.ID}}/trash" hx-confirm="Move this photo to the trash? You can restore it from the trash.">Move to trash</button>
+    </p>
   </div>
 </div>
 {{end}}

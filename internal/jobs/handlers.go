@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/bits"
 	"os"
@@ -36,6 +37,9 @@ func (h *Handlers) Register(q *Queue) {
 	q.Handle(TypeAnalyzeImage, h.analyzeImage)
 	q.Handle(TypeDeleteFolder, h.deleteFolder)
 	q.Handle(TypeScanFolderDuplicates, h.scanFolderDuplicates)
+	q.Handle(TypeDeleteImageObjects, h.deleteImageObjects)
+	q.Handle(TypeSweepOrphans, h.sweepOrphans)
+	q.Handle(TypeExtractGPS, h.extractGPS)
 }
 
 func (h *Handlers) deriveImage(ctx context.Context, raw json.RawMessage) error {
@@ -43,7 +47,7 @@ func (h *Handlers) deriveImage(ctx context.Context, raw json.RawMessage) error {
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return err
 	}
-	img, err := h.DB.Q.GetImage(ctx, p.ImageID) // excludes images of deleted folders
+	img, err := h.DB.Q.GetImageAny(ctx, p.ImageID) // includes trashed images, excludes images of deleted folders
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil // image or folder deleted meanwhile
 	}
@@ -102,6 +106,42 @@ func (h *Handlers) deriveImage(ctx context.Context, raw json.RawMessage) error {
 	return h.Queue.ScheduleFolderScan(ctx, h.DB.Q, img.FolderID)
 }
 
+// extractGPS reads the EXIF position of an image that was uploaded before
+// positions were stored. It runs once per image: the attempt is recorded
+// whether or not a position was found.
+func (h *Handlers) extractGPS(ctx context.Context, raw json.RawMessage) error {
+	var p ExtractGPSPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return err
+	}
+	img, err := h.DB.Q.GetImageAny(ctx, p.ImageID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if img.GpsAttemptedAt.Valid {
+		return nil
+	}
+	rc, err := h.Store.Get(ctx, storage.OriginalKey(img.FolderID, img.ID))
+	if err != nil {
+		return fmt.Errorf("read original: %w", err)
+	}
+	data, err := io.ReadAll(rc)
+	rc.Close()
+	if err != nil {
+		return fmt.Errorf("read original: %w", err)
+	}
+	meta := images.ReadMeta(bytes.NewReader(data))
+	return h.DB.Q.SetImageGPS(ctx, sqlc.SetImageGPSParams{
+		GpsLat:         sql.NullFloat64{Float64: meta.Lat, Valid: meta.HasGPS},
+		GpsLon:         sql.NullFloat64{Float64: meta.Lon, Valid: meta.HasGPS},
+		GpsAttemptedAt: sql.NullString{String: database.Time(time.Now()), Valid: true},
+		ID:             img.ID,
+	})
+}
+
 // scanFolderDuplicates compares every image's perceptual hash against every
 // other in the folder and flags near-duplicate pairs for manual review.
 // Exact byte-identical duplicates never reach this: they are skipped at
@@ -148,7 +188,7 @@ func (h *Handlers) analyzeImage(ctx context.Context, raw json.RawMessage) error 
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return err
 	}
-	img, err := h.DB.Q.GetImage(ctx, p.ImageID)
+	img, err := h.DB.Q.GetImageAny(ctx, p.ImageID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -216,10 +256,11 @@ func (h *Handlers) deleteFolder(ctx context.Context, raw json.RawMessage) error 
 		return fmt.Errorf("folder %s is not marked deleted", f.ID)
 	}
 
-	keys, err := h.Store.List(ctx, storage.FolderPrefix(f.ID))
+	objs, err := h.Store.List(ctx, storage.FolderPrefix(f.ID))
 	if err != nil {
 		return fmt.Errorf("list objects: %w", err)
 	}
+	keys := storage.Keys(objs)
 	var failed int
 	for _, k := range keys {
 		if err := h.Store.Delete(ctx, k); err != nil {
@@ -247,5 +288,36 @@ func (h *Handlers) deleteFolder(ctx context.Context, raw json.RawMessage) error 
 		return err
 	}
 	h.Log.Info("folder deleted", "folder_id", f.ID, "objects", len(keys))
+	return nil
+}
+
+// deleteImageObjects removes the stored objects of a purged image. The image
+// row is already gone; retries are safe because deleting a missing key
+// succeeds.
+func (h *Handlers) deleteImageObjects(ctx context.Context, raw json.RawMessage) error {
+	var p DeleteImageObjectsPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return err
+	}
+	// Never delete objects of an image that exists (defence against a bad payload).
+	if _, err := h.DB.Q.GetImageUnchecked(ctx, p.ImageID); err == nil {
+		return nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	var errs []error
+	for _, key := range []string{
+		storage.OriginalKey(p.FolderID, p.ImageID),
+		storage.PreviewKey(p.FolderID, p.ImageID),
+		storage.ThumbnailKey(p.FolderID, p.ImageID),
+	} {
+		if err := h.Store.Delete(ctx, key); err != nil {
+			errs = append(errs, fmt.Errorf("delete %s: %w", key, err))
+		}
+	}
+	if err := errors.Join(errs...); err != nil {
+		return err
+	}
+	h.Log.Info("image objects deleted", "folder_id", p.FolderID, "image_id", p.ImageID)
 	return nil
 }

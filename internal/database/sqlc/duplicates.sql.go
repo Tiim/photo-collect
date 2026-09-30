@@ -80,6 +80,7 @@ FROM image_duplicates d
 JOIN images a ON a.id = d.image_id_a
 JOIN images b ON b.id = d.image_id_b
 WHERE d.folder_id = ? AND d.status = 'pending'
+  AND a.deleted_at IS NULL AND b.deleted_at IS NULL
 ORDER BY d.created_at
 `
 

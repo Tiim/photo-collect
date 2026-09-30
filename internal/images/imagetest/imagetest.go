@@ -20,6 +20,9 @@ type Camera struct {
 	Make, Model string
 	// Taken is the naive wall-clock capture time (DateTimeOriginal); zero omits it.
 	Taken time.Time
+	// GPS embeds a position (decimal degrees, south and west negative) when HasGPS is set.
+	HasGPS   bool
+	Lat, Lon float64
 }
 
 // PlainJPEG returns a small gradient JPEG without EXIF.
@@ -103,6 +106,33 @@ type entry struct {
 	long  uint32
 }
 
+// rationals encodes degrees, minutes and seconds of an absolute coordinate as three RATIONALs.
+func rationals(tag uint16, v float64) entry {
+	deg := int(v)
+	min := int((v - float64(deg)) * 60)
+	sec := (v - float64(deg) - float64(min)/60) * 3600
+	var d bytes.Buffer
+	for _, r := range [][2]uint32{{uint32(deg), 1}, {uint32(min), 1}, {uint32(sec*10000 + 0.5), 10000}} {
+		binary.Write(&d, binary.LittleEndian, r[0])
+		binary.Write(&d, binary.LittleEndian, r[1])
+	}
+	return entry{tag: tag, typ: 5, count: 3, data: d.Bytes()}
+}
+
+func ref(neg bool, pos, negRef string) string {
+	if neg {
+		return negRef
+	}
+	return pos
+}
+
+func abs(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
 func ascii(tag uint16, s string) entry {
 	d := append([]byte(s), 0)
 	return entry{tag: tag, typ: 2, count: uint32(len(d)), data: d}
@@ -124,6 +154,15 @@ func buildTIFF(cam Camera) []byte {
 		ifd0 = append(ifd0, entry{tag: 0x8769, typ: 4, count: 1}) // long filled in below
 	}
 
+	var gpsIFD []entry
+	if cam.HasGPS {
+		gpsIFD = []entry{
+			ascii(0x0001, ref(cam.Lat < 0, "N", "S")), rationals(0x0002, abs(cam.Lat)),
+			ascii(0x0003, ref(cam.Lon < 0, "E", "W")), rationals(0x0004, abs(cam.Lon)),
+		}
+		ifd0 = append(ifd0, entry{tag: 0x8825, typ: 4, count: 1}) // long filled in below
+	}
+
 	size := func(es []entry) int { return 2 + 12*len(es) + 4 }
 	pos := 8
 	ifd0Off := pos
@@ -133,9 +172,17 @@ func buildTIFF(cam Camera) []byte {
 		exifOff = pos
 		pos += size(exifIFD)
 	}
+	gpsOff := 0
+	if len(gpsIFD) > 0 {
+		gpsOff = pos
+		pos += size(gpsIFD)
+	}
 	for i := range ifd0 {
-		if ifd0[i].tag == 0x8769 {
+		switch ifd0[i].tag {
+		case 0x8769:
 			ifd0[i].long = uint32(exifOff)
+		case 0x8825:
+			ifd0[i].long = uint32(gpsOff)
 		}
 	}
 
@@ -168,11 +215,17 @@ func buildTIFF(cam Camera) []byte {
 		exifBytes = write(exifIFD)
 	}
 
+	var gpsBytes []byte
+	if len(gpsIFD) > 0 {
+		gpsBytes = write(gpsIFD)
+	}
+
 	var out bytes.Buffer
 	out.WriteString("II*\x00")
 	binary.Write(&out, binary.LittleEndian, uint32(ifd0Off))
 	out.Write(ifd0Bytes)
 	out.Write(exifBytes)
+	out.Write(gpsBytes)
 	out.Write(data.Bytes())
 	return out.Bytes()
 }

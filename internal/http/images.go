@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -19,6 +20,13 @@ type ImageView struct {
 	TileView
 	Folder sqlc.Folder
 	Tags   TagsView
+	Map    *MapView // nil when the image has no position or the folder hides maps
+}
+
+// MapView is the location shown in the image detail (coordinates and a link;
+// the only map is the folder map).
+type MapView struct {
+	Lat, Lon float64
 }
 
 type TagsView struct {
@@ -26,8 +34,18 @@ type TagsView struct {
 	Tags    []sqlc.Tag
 }
 
+// image loads the (not trashed) image named in the path or writes a 404.
 func (s *Server) image(w http.ResponseWriter, r *http.Request) (sqlc.Image, bool) {
-	img, err := s.db.Q.GetImage(r.Context(), r.PathValue("id"))
+	return s.loadImage(w, r, s.db.Q.GetImage)
+}
+
+// imageOrTrashed is image for the few routes the trash view needs.
+func (s *Server) imageOrTrashed(w http.ResponseWriter, r *http.Request) (sqlc.Image, bool) {
+	return s.loadImage(w, r, s.db.Q.GetImageAny)
+}
+
+func (s *Server) loadImage(w http.ResponseWriter, r *http.Request, get func(context.Context, string) (sqlc.Image, error)) (sqlc.Image, bool) {
+	img, err := get(r.Context(), r.PathValue("id"))
 	if err != nil {
 		s.notFoundOr(w, r, err)
 		return img, false
@@ -51,6 +69,9 @@ func (s *Server) imageShow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := ImageView{TileView: tile(img), Folder: folder, Tags: TagsView{ImageID: img.ID, Tags: tags}}
+	if img.GpsLat.Valid && img.GpsLon.Valid {
+		v.Map = &MapView{Lat: img.GpsLat.Float64, Lon: img.GpsLon.Float64}
+	}
 	if isHTMX(r) {
 		s.fragment(w, r, "image_detail", v)
 		return
@@ -69,7 +90,12 @@ func (s *Server) imageTile(w http.ResponseWriter, r *http.Request) {
 // imageFile proxies image bytes from storage. Nothing is ever served without a session.
 func (s *Server) imageFile(kind string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		img, ok := s.image(w, r)
+		// Only thumbnails are shown for trashed images (in the trash view).
+		load := s.image
+		if kind == "thumbnail" {
+			load = s.imageOrTrashed
+		}
+		img, ok := load(w, r)
 		if !ok {
 			return
 		}
@@ -225,13 +251,26 @@ func (s *Server) imageTagRemove(w http.ResponseWriter, r *http.Request) {
 }
 
 // tagSuggest returns <option> elements for the tag autocomplete datalist.
+// The tag filter passes a comma-separated list as "tag": the last entry is
+// completed and the earlier ones are kept in each option's value.
 func (s *Server) tagSuggest(w http.ResponseWriter, r *http.Request) {
-	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("name")))
+	raw := r.URL.Query().Get("name")
+	prefix := ""
+	if raw == "" {
+		raw = r.URL.Query().Get("tag")
+		if i := strings.LastIndex(raw, ","); i >= 0 {
+			prefix, raw = strings.TrimSpace(raw[:i])+", ", raw[i+1:]
+		}
+	}
+	q := strings.ToLower(strings.TrimSpace(raw))
 	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q)
 	names, err := s.db.Q.SuggestTags(r.Context(), sql.NullString{String: esc, Valid: true})
 	if err != nil {
 		s.serverError(w, r, err)
 		return
+	}
+	for i := range names {
+		names[i] = prefix + names[i]
 	}
 	s.fragment(w, r, "tag_options", names)
 }

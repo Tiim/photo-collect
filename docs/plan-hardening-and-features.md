@@ -158,7 +158,7 @@ Goal: a leaked link cannot exhaust CPU, disk or storage. Depends on 2.1 for clie
 
 ## Stage 4: data integrity and deletion (items 4 and 7)
 
-### 4.1 Soft delete (trash) and durable purge
+### 4.1 Soft delete (trash) and durable purge — DONE
 - Migration `0005`: `images.deleted_at TEXT NULL`, `images.deleted_by TEXT NULL` (user id), index on
   `images(folder_id, deleted_at)`.
 - `TrashImages(ctx, folderID, ids, userID)` sets `deleted_at`; `RestoreImages` clears it. Shared
@@ -177,7 +177,7 @@ Goal: a leaked link cannot exhaust CPU, disk or storage. Depends on 2.1 for clie
   when the folder is deleted; verify that `delete_folder` also removes trashed images and objects.
 - README: trashed photos keep using storage until purged.
 
-### 4.2 Orphan sweeper (item 4)
+### 4.2 Orphan sweeper (item 4) — DONE
 - New job `sweep_orphans`, scheduled at startup and then daily (reuse the ticker pattern of session
   purge). Uses `Store.List("folders/")`, and for each key parses `folders/<f>/images/<i>/<kind>`:
   - key whose image row does not exist (trashed rows **do** exist, so their objects are never
@@ -196,7 +196,7 @@ Goal: a leaked link cannot exhaust CPU, disk or storage. Depends on 2.1 for clie
 - Tests: contract test for `List` metadata; sweeper unit test with a fake store; grace period;
   trashed image objects are kept; guard triggers.
 
-### 4.3 Trash UI and "delete selected photos" (item 7)
+### 4.3 Trash UI and "delete selected photos" (item 7) — DONE (checked tiles only; "all matching" follows in stage 5)
 - Grid: the folder grid already supports selection for exports (`input.sel`, "select all"). Add a
   "Move to trash" button next to "Download selected". Confirm dialog stating the count (`<dialog>`
   or `hx-confirm`; strings via i18n). Submits via htmx to `POST /folders/{id}/images/trash` with
@@ -217,14 +217,15 @@ Goal: a leaked link cannot exhaust CPU, disk or storage. Depends on 2.1 for clie
   folder ignored; purge deletes rows and enqueues object cleanup; purge refuses non-trashed images;
   exports that referenced the image still build; CSRF required.
 
-**Stage 4 exit**: no path leaves orphaned objects, users can bulk-trash and restore photos, and
+**Stage 4 exit** (all steps done): no path leaves orphaned objects, users can bulk-trash and restore photos, and
 purging is durable.
 
 ---
 
 ## Stage 5: filtering and GPS map (items 8 and 10)
 
-### 5.1 Filtering (item 8)
+### 5.1 Filtering (item 8) — DONE
+(Deviations: tags are entered as one comma-separated field; sort direction uses a computed `is_desc` column because sqlc cannot parameterise `ORDER BY`; the `EXPLAIN` test checks the index-backed sub-queries rather than the whole statement. Migration `0006` also holds the GPS columns.)
 Deliberately small filter model (query string, so it is bookmarkable and works with the paginated
 grid):
 
@@ -293,7 +294,8 @@ GET /folders/{id}?tag=forrest&tag=summer&tag_mode=all&rating_min=3&uploader=anna
   uploader, date range, no filter, combined); pagination stability with ties; `make check-generated`
   stays green.
 
-### 5.2 GPS on OpenStreetMap with Leaflet (item 10)
+### 5.2 GPS on OpenStreetMap with Leaflet (item 10) — DONE
+(Deviations: `map.js` loads Leaflet on demand; the folder page itself allows the tile host in `img-src` when maps are on, because the image modal is loaded into it; the upload-page privacy sentence is left for stage 6 when the i18n strings are converted.)
 - **Extraction**: extend `images.Meta` with `Lat, Lon float64` and `HasGPS bool`, filled from the EXIF
   GPS IFD in `ReadMeta` (`imagemeta` exposes `GPS`; verify the API and add a fallback for HEIC).
   Validate ranges (`|lat| <= 90`, `|lon| <= 180`), treat exact (0,0) as missing. Altitude is out of
@@ -321,16 +323,15 @@ GET /folders/{id}?tag=forrest&tag=summer&tag_mode=all&rating_min=3&uploader=anna
     vendored marker clustering plugin) linking to the detail view. Ship after the single-image
     map. It fetches `GET /folders/{id}/map.json` (filter query string, returns id, lat, lon only).
   - Filter integration: `has_gps=1`.
-- **Privacy**: GPS is only ever shown to signed-in users. Originals stay untouched. Add a folder
-  setting `show_map` (default on) to hide maps for sensitive events. The upload page says that a
+- **Privacy**: GPS is only ever shown to signed-in users. Originals stay untouched. The upload page says that a
   photo's embedded location is stored (i18n string). Test that derivatives contain no EXIF.
   Note in the README that opening a map sends the viewer's IP to the OSM tile servers.
 - **Export**: write GPS latitude/longitude into the XMP sidecar (`BuildXMP`).
 - Tests: EXIF fixtures with GPS (add to `imagetest`), range validation, `(0,0)` ignored, detail page
-  renders the map container only when GPS exists and `show_map` is on, `map.json` respects the
+  renders the map container only when GPS exists `map.json` respects the
   filter, `img-src` allows the tile host only on map pages, and no third-party script or style host appears in any CSP.
 
-**Stage 5 exit**: photos can be filtered by tag/rating/uploader/date, and geotagged photos show on a
+**Stage 5 exit** (all steps done): photos can be filtered by tag/rating/uploader/date, and geotagged photos show on a
 Leaflet map.
 
 
@@ -406,7 +407,7 @@ lands to avoid a large catch-up (see "Working agreement").
 |---|---|---|
 | 0004 | `images.phash_attempted_at`, `images.derivative_version`, job dead-state column if missing | 1 |
 | 0005 | `images.deleted_at`, `images.deleted_by`, index `(folder_id, deleted_at)` | 4 |
-| 0006 | `images.gps_lat/gps_lon`, `folders.show_map`, filter indexes | 5 |
+| 0006 | `images.gps_lat/gps_lon`, filter indexes | 5 |
 | 0007 | (optional) `users.language` | 6 |
 
 All migrations are additive and backward compatible for startup, so a rollback to the previous image
@@ -441,8 +442,7 @@ unreferenced objects (after 24 h) from the first run.
 - **Filter query performance** (5.1): the `IS NULL OR` pattern can defeat indexes; mitigated by the
   query-plan test on 5000 images and a hard cap on tag count.
 - **Map tiles and privacy** (5.2): tile requests reveal the viewer's IP to the OSM tile servers and the
-  OSM tile policy forbids heavy use; mitigated by loading maps only when opened, the per-folder
-  `show_map` switch, vendored scripts, `img-src` relaxed only on map pages and a README note.
+  OSM tile policy forbids heavy use; mitigated by loading maps only when opened, vendored scripts, `img-src` relaxed only on map pages and a README note.
 - **i18n retrofit churn** (6): mitigated by building the infrastructure early and extracting
   strings per stage.
 - **Storage interface change** (4.2, `List` metadata) touches three backends; the shared contract

@@ -23,6 +23,7 @@ import (
 	"github.com/tiim/photo-collect/internal/downloads"
 	"github.com/tiim/photo-collect/internal/i18n"
 	"github.com/tiim/photo-collect/internal/jobs"
+	"github.com/tiim/photo-collect/internal/library"
 	"github.com/tiim/photo-collect/internal/oidc"
 	"github.com/tiim/photo-collect/internal/ratelimit"
 	"github.com/tiim/photo-collect/internal/sessions"
@@ -40,6 +41,7 @@ type Server struct {
 	oidc      *oidc.Handler
 	uploads   *uploads.Service
 	downloads *downloads.Service
+	library   *library.Service
 	queue     *jobs.Queue
 	log       *slog.Logger
 	pages     map[string]*template.Template
@@ -69,7 +71,7 @@ type Deps struct {
 func NewServer(d Deps) (*Server, error) {
 	s := &Server{
 		cfg: d.Config, db: d.DB, store: d.Store, sessions: d.Sessions, signer: d.Signer,
-		oidc: d.OIDC, uploads: d.Uploads, downloads: d.Downloads, queue: d.Queue, log: d.Log,
+		oidc: d.OIDC, uploads: d.Uploads, downloads: d.Downloads, library: library.New(d.DB, d.Queue), queue: d.Queue, log: d.Log,
 		secure:    strings.HasPrefix(d.Config.BaseURL, "https://"),
 		clientIPs: clientip.NewResolver(d.Config.TrustedProxies),
 
@@ -122,7 +124,13 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /folders", s.auth(s.foldersList))
 	mux.Handle("POST /folders", s.auth(s.folderCreate))
 	mux.Handle("GET /folders/{id}", s.auth(s.folderShow))
+	mux.Handle("GET /folders/{id}/gallery", s.auth(s.folderGallery))
 	mux.Handle("GET /folders/{id}/images", s.auth(s.folderImages))
+	mux.Handle("GET /folders/{id}/map.json", s.auth(s.folderMapJSON))
+	mux.Handle("POST /folders/{id}/images/trash", s.auth(s.imagesTrash))
+	mux.Handle("POST /folders/{id}/images/restore", s.auth(s.trashChange(false)))
+	mux.Handle("POST /folders/{id}/images/purge", s.auth(s.trashChange(true)))
+	mux.Handle("GET /folders/{id}/trash", s.auth(s.trashShow))
 	mux.Handle("POST /folders/{id}/delete", s.auth(s.folderDelete))
 	mux.Handle("POST /folders/{id}/standard-tags", s.auth(s.standardTagAdd))
 	mux.Handle("POST /folders/{id}/standard-tags/{tag}/delete", s.auth(s.standardTagRemove))
@@ -141,6 +149,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /images/{id}/preview", s.auth(s.imageFile("preview")))
 	mux.Handle("GET /images/{id}/original", s.auth(s.imageFile("original")))
 	mux.Handle("POST /images/{id}/rating", s.auth(s.imageRate))
+	mux.Handle("POST /images/{id}/trash", s.auth(s.imageTrash))
 	mux.Handle("POST /images/{id}/tags", s.auth(s.imageTagAdd))
 	mux.Handle("POST /images/{id}/tags/{tag}/delete", s.auth(s.imageTagRemove))
 	mux.Handle("GET /tags/suggest", s.auth(s.tagSuggest))

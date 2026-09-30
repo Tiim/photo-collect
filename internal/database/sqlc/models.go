@@ -62,6 +62,11 @@ type Image struct {
 	Phash             sql.NullInt64
 	PhashAttemptedAt  sql.NullString
 	DerivativeVersion int64
+	DeletedAt         sql.NullString
+	DeletedBy         sql.NullString
+	GpsLat            sql.NullFloat64
+	GpsLon            sql.NullFloat64
+	GpsAttemptedAt    sql.NullString
 }
 
 type ImageDuplicate struct {

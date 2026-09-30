@@ -134,6 +134,23 @@ func backfillPHashes(ctx context.Context, db *database.DB, queue *jobs.Queue, lo
 	return nil
 }
 
+// backfillGPS queues a position lookup for every image that predates GPS
+// support. Each image is attempted once (the job records it), so this is
+// cheap on later starts.
+func backfillGPS(ctx context.Context, db *database.DB, queue *jobs.Queue, log *slog.Logger) error {
+	missing, err := db.Q.ListImagesMissingGPS(ctx)
+	if err != nil || len(missing) == 0 {
+		return err
+	}
+	log.Info("backfilling GPS positions", "count", len(missing))
+	for _, id := range missing {
+		if err := queue.Enqueue(ctx, db.Q, jobs.TypeExtractGPS, jobs.ExtractGPSPayload{ImageID: id}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func serve(log *slog.Logger) error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -189,6 +206,9 @@ func serve(log *slog.Logger) error {
 	if err := backfillPHashes(ctx, db, queue, log); err != nil {
 		return fmt.Errorf("backfill perceptual hashes: %w", err)
 	}
+	if err := backfillGPS(ctx, db, queue, log); err != nil {
+		return fmt.Errorf("backfill GPS positions: %w", err)
+	}
 	dl, err := downloads.New(db, store, queue, cfg.ExportDir, cfg.ExportTTL, log)
 	if err != nil {
 		return err
@@ -221,6 +241,7 @@ func serve(log *slog.Logger) error {
 	}
 	background(func() { queue.Run(ctx, cfg.WorkerCount) })
 	background(func() { dl.RunCleanup(ctx) })
+	background(func() { queue.RunSweepSchedule(ctx) })
 	background(func() {
 		t := time.NewTicker(time.Hour)
 		defer t.Stop()

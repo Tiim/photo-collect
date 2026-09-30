@@ -1,0 +1,6 @@
+{{define "map_card"}}<div id="map-card"{{if .OOB}} hx-swap-oob="true"{{end}}>{{if .JSONURL}}
+  <div class="panel">
+    <h2>Map</h2>
+    <div class="map folder-map" data-json="{{.JSONURL}}"><p class="muted small">Loading map…</p></div>
+  </div>
+{{end}}</div>{{end}}

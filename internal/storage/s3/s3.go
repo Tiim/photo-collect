@@ -88,8 +88,8 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 	return err
 }
 
-func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
-	var keys []string
+func (s *Store) List(ctx context.Context, prefix string) ([]storage.ObjectInfo, error) {
+	var objs []storage.ObjectInfo
 	p := awss3.NewListObjectsV2Paginator(s.client, &awss3.ListObjectsV2Input{Bucket: &s.bucket, Prefix: &prefix})
 	for p.HasMorePages() {
 		page, err := p.NextPage(ctx)
@@ -97,10 +97,12 @@ func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
 			return nil, err
 		}
 		for _, o := range page.Contents {
-			keys = append(keys, aws.ToString(o.Key))
+			objs = append(objs, storage.ObjectInfo{
+				Key: aws.ToString(o.Key), Modified: aws.ToTime(o.LastModified), Size: aws.ToInt64(o.Size),
+			})
 		}
 	}
-	return keys, nil
+	return objs, nil
 }
 
 func (s *Store) Ping(ctx context.Context) error {

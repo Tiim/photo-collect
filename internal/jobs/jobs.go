@@ -22,6 +22,9 @@ const (
 	TypeDeleteFolder         = "delete_folder"
 	TypeBuildExport          = "build_export"
 	TypeScanFolderDuplicates = "scan_folder_duplicates"
+	TypeDeleteImageObjects   = "delete_image_objects"
+	TypeSweepOrphans         = "sweep_orphans"
+	TypeExtractGPS           = "extract_gps"
 )
 
 // Job payloads.
@@ -32,6 +35,9 @@ type (
 	AnalyzePayload struct {
 		ImageID string `json:"image_id"`
 	}
+	ExtractGPSPayload struct {
+		ImageID string `json:"image_id"`
+	}
 	DeleteFolderPayload struct {
 		FolderID string `json:"folder_id"`
 	}
@@ -40,6 +46,10 @@ type (
 	}
 	ScanFolderDuplicatesPayload struct {
 		FolderID string `json:"folder_id"`
+	}
+	DeleteImageObjectsPayload struct {
+		FolderID string `json:"folder_id"`
+		ImageID  string `json:"image_id"`
 	}
 )
 

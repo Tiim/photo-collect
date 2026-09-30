@@ -91,7 +91,39 @@ Restrict who may sign in with an Authentik policy/group binding on the applicati
   that lack EXIF make/model or capture time cannot be corrected.
 - Duplicate detection: an exact re-upload (same bytes) is skipped silently; a near-duplicate
   (same picture resized/re-encoded) is flagged for review in the folder, where an admin can keep
-  one and merge tags/rating onto it, or dismiss the pair.
+  one (the other goes to the trash) and merge tags/rating onto it, or dismiss the pair.
+- Trash: "Move to trash" on the selected photos (or in the photo detail) hides them everywhere:
+  grid, counts, exports, duplicate review and the pHash backfill. The folder's **Trash** view
+  lists them; from there a selection can be restored or **deleted permanently**. There is no
+  automatic expiry and no "empty trash" button. **Trashed photos keep using storage until they are
+  purged** and still count towards `UPLOAD_MAX_IMAGES_PER_FOLDER`. Purging deletes the database
+  row and queues a retryable job that removes the original, preview and thumbnail. Re-uploading
+  a photo that is in the trash is skipped like any duplicate; restore it from the trash instead.
+- Orphan sweeper: at startup and then daily, a job lists `folders/` in the object store and
+  deletes image objects without a matching image row (trashed photos have rows, so they are never
+  touched). Only objects older than 24 hours are removed, so uploads in flight are safe. The
+  sweep aborts (job fails, nothing is deleted) if 20 % or more of the objects, and at least 100,
+  would be removed, which usually means the database points at the wrong storage. Every deletion
+  is logged. Image rows whose original is missing are logged as a warning. Backends that cannot
+  report object age are skipped with a warning. The sweeper cannot be switched off.
+- Filtering: the folder page has a filter bar (tags with all/any, minimum rating, uploader,
+  capture date range on the clock-corrected time, "with location", sort). The filter lives in the
+  query string (`/folders/<id>?tag=forrest&rating_min=3`), so it can be bookmarked; paging is a
+  keyset on the sort key, so ties never skip or repeat photos. With a filter active, **Download all
+  matching** and **Move all matching to trash** act on every match (the server re-evaluates the
+  filter; the trash action is refused if the count changed since you saw it). Not supported: tag
+  exclusion, camera filter.
+- Locations: the EXIF GPS position of a photo is stored at upload (older photos are read once at
+  startup by a background job) and shown to signed-in users only: coordinates and a map in the photo
+  detail (coordinates and an openstreetmap.org link), and a map card at the top of the folder page
+  that opens by itself when a photo matching the current filter has a location. Originals are never modified
+  and thumbnails/previews contain no EXIF. The XMP sidecar in exports carries the position. Maps use
+  Leaflet (vendored in `web/static/leaflet`, no CDN) with standard OpenStreetMap tiles.
+  **Showing the map card makes the viewer's browser request tiles from `tile.openstreetmap.org`,
+  which sees the viewer's IP address** (and the site's origin as referrer); the content security
+  policy allows that host for images on the folder page only. Tile use must follow the
+  [OSM tile policy](https://operations.osmfoundation.org/policies/tiles/) (no bulk use).
+  Guests are not told on the upload page yet (translation follows in stage 6).
 - Ratings and tags live only in SQLite; ZIP exports contain the originals plus `.xmp` sidecars.
 - Storage keys are generated IDs (`folders/<folder>/images/<image>/original|preview|thumbnail`).
 - Deleting a folder hides it immediately and queues a retryable job that removes all objects,

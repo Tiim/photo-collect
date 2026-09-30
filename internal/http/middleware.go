@@ -150,13 +150,27 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		// browsers send "Origin: null" on form posts under no-referrer, which would
 		// defeat our Origin check.
 		h.Set("Referrer-Policy", "same-origin")
-		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'")
+		h.Set("Content-Security-Policy", csp(false))
 		if s.secure {
 			h.Set("Strict-Transport-Security", "max-age=31536000")
 		}
 		next.ServeHTTP(w, r)
 	})
 }
+
+// osmTileHost serves the map tiles. It is only allowed on pages that show a map.
+const osmTileHost = "https://tile.openstreetmap.org"
+
+func csp(maps bool) string {
+	img := "'self' data:"
+	if maps {
+		img += " " + osmTileHost
+	}
+	return "default-src 'self'; img-src " + img + "; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'"
+}
+
+// allowMapTiles relaxes img-src for the response of a handler that renders a map.
+func allowMapTiles(w http.ResponseWriter) { w.Header().Set("Content-Security-Policy", csp(true)) }
 
 func cacheControl(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

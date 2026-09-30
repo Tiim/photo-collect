@@ -8,6 +8,7 @@ import (
 	"io"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/tiim/photo-collect/internal/storage"
 )
@@ -63,13 +64,23 @@ func Run(t *testing.T, s storage.Store) {
 				t.Fatal(err)
 			}
 		}
-		got, err := s.List(ctx, storage.FolderPrefix("f2"))
+		infos, err := s.List(ctx, storage.FolderPrefix("f2"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		slices.Sort(got)
+		got := storage.Keys(infos)
 		if !slices.Equal(got, keys[:2]) {
 			t.Fatalf("list = %v", got)
+		}
+		for _, o := range infos {
+			if o.Size != 1 {
+				t.Errorf("%s: size = %d, want 1", o.Key, o.Size)
+			}
+			// Modified may be zero for backends that cannot report it, but
+			// when it is set it must be recent.
+			if !o.Modified.IsZero() && time.Since(o.Modified) > time.Hour {
+				t.Errorf("%s: modified = %v, want recent", o.Key, o.Modified)
+			}
 		}
 		for _, k := range got {
 			if err := s.Delete(ctx, k); err != nil {
@@ -79,9 +90,9 @@ func Run(t *testing.T, s storage.Store) {
 		if err := s.Delete(ctx, "folders/f2/images/a/original"); err != nil {
 			t.Fatalf("deleting missing key should succeed: %v", err)
 		}
-		got, _ = s.List(ctx, storage.FolderPrefix("f2"))
-		if len(got) != 0 {
-			t.Fatalf("expected empty, got %v", got)
+		infos, _ = s.List(ctx, storage.FolderPrefix("f2"))
+		if len(infos) != 0 {
+			t.Fatalf("expected empty, got %v", infos)
 		}
 	})
 

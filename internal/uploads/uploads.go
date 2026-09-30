@@ -12,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"time"
 
 	"modernc.org/sqlite"
 	sqlitelib "modernc.org/sqlite/lib"
@@ -128,6 +129,9 @@ func (s *Service) Ingest(ctx context.Context, folderID, nickname, filename strin
 			UploaderNickname: nickname,
 			DeviceKey:        sql.NullString{String: deviceKey, Valid: deviceKey != ""},
 			ExifTime:         sql.NullString{String: meta.TakenAt.Format(images.WallTimeLayout), Valid: !meta.TakenAt.IsZero()},
+			GpsLat:           sql.NullFloat64{Float64: meta.Lat, Valid: meta.HasGPS},
+			GpsLon:           sql.NullFloat64{Float64: meta.Lon, Valid: meta.HasGPS},
+			GpsAttemptedAt:   sql.NullString{String: database.Time(time.Now()), Valid: true},
 		})
 		if err != nil {
 			var sqliteErr *sqlite.Error
@@ -176,7 +180,7 @@ func (s *Service) checkCapacity(ctx context.Context, q *sqlc.Queries, folderID s
 	} else if err != nil {
 		return err
 	}
-	count, err := q.CountImagesInFolder(ctx, folderID)
+	count, err := q.CountAllImagesInFolder(ctx, folderID)
 	if err != nil {
 		return err
 	}

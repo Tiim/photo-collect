@@ -1,0 +1,10 @@
+{{define "trash_grid"}}{{range .Images}}{{template "trash_tile" .}}{{end}}{{if .NextBefore}}<div class="sentinel" hx-get="/folders/{{.FolderID}}/trash?before={{.NextBefore}}" hx-trigger="revealed" hx-target="this" hx-swap="outerHTML"></div>{{end}}{{end}}
+{{define "trash_tile"}}<div class="tile trashed" id="tile-{{.ID}}">
+  <input type="checkbox" name="image" value="{{.ID}}" form="trash-form" class="sel" aria-label="Select {{.OriginalFilename}}">
+  <div class="thumb">
+    {{if .ThumbnailReady}}<img src="/images/{{.ID}}/thumbnail" loading="lazy" alt="{{.OriginalFilename}}">{{else}}<div class="placeholder">Processing…</div>{{end}}
+  </div>
+  <div class="caption"><span class="name" title="{{.OriginalFilename}}">{{.OriginalFilename}}</span><span class="muted small">{{.UploaderNickname}}</span></div>
+</div>{{end}}
+{{define "trash_response"}}{{template "trash_grid" .Grid}}{{template "trash_count" .Counts}}{{end}}
+{{define "trash_count"}}<span id="trash-count" class="muted small"{{if .OOB}} hx-swap-oob="true"{{end}}>{{.Trashed}} in trash</span>{{end}}
