@@ -19,6 +19,7 @@ import (
 	"github.com/tiim/photo-collect/internal/config"
 	"github.com/tiim/photo-collect/internal/database"
 	"github.com/tiim/photo-collect/internal/downloads"
+	"github.com/tiim/photo-collect/internal/i18n"
 	"github.com/tiim/photo-collect/internal/jobs"
 	"github.com/tiim/photo-collect/internal/oidc"
 	"github.com/tiim/photo-collect/internal/sessions"
@@ -40,6 +41,7 @@ type Server struct {
 	log       *slog.Logger
 	pages     map[string]*template.Template
 	secure    bool
+	i18n      *i18n.Bundle
 }
 
 type Deps struct {
@@ -61,6 +63,11 @@ func NewServer(d Deps) (*Server, error) {
 		oidc: d.OIDC, uploads: d.Uploads, downloads: d.Downloads, queue: d.Queue, log: d.Log,
 		secure: strings.HasPrefix(d.Config.BaseURL, "https://"),
 	}
+	bundle, err := i18n.New(web.FS, "locales", d.Log)
+	if err != nil {
+		return nil, err
+	}
+	s.i18n = bundle
 	if err := s.loadTemplates(); err != nil {
 		return nil, err
 	}
@@ -117,7 +124,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /images/{id}/tags/{tag}/delete", s.auth(s.imageTagRemove))
 	mux.Handle("GET /tags/suggest", s.auth(s.tagSuggest))
 
-	return chain(mux, s.recoverer, s.securityHeaders, s.accessLog)
+	return chain(mux, s.recoverer, s.securityHeaders, s.lang, s.accessLog)
 }
 
 func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {

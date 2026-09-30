@@ -70,6 +70,11 @@ Restrict who may sign in with an Authentik policy/group binding on the applicati
 - Jobs are persisted in SQLite and resume after a restart (orphaned running jobs are requeued).
 - Upload link tokens are stored in the database (so members can copy the link again) and are
   never logged; request logs use route patterns instead of raw paths.
+- Languages: the UI language is chosen by `?lang=` (remembered in a `lang` cookie for a year),
+  then the cookie, then `Accept-Language`, then English. Catalogs are TOML files in
+  `web/locales/` (`active.<lang>.toml`); adding a language means adding one file and a name in
+  `internal/http/lang.go`. Templates call `{{call $.T "message.id"}}`; missing messages fall
+  back to English, then to the ID. Only the base layout and the upload page are translated so far.
 
 ## Development
 

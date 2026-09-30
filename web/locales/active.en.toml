@@ -1,0 +1,18 @@
+# English catalog (source language). Keys are added here as strings are written.
+"lang.switch" = "Language"
+
+"nav.folders" = "Folders"
+"nav.sign_out" = "Sign out"
+
+"upload.title" = "Upload photos"
+"upload.folder" = "Folder: <strong>{{.Name}}</strong>"
+"upload.uploading_as" = "Uploading as <strong>{{.Nickname}}</strong>"
+"upload.not_you" = "Not you?"
+"upload.drop" = "Drag & drop photos here"
+"upload.or" = "or"
+"upload.choose" = "Choose photos"
+"upload.formats" = "JPEG, PNG, WebP and HEIC · up to {{.MB}} MB each"
+"upload.clock_hint" = "Cameras with a wrong clock? Photograph the <a href=\"/\" target=\"_blank\" rel=\"noopener\">clock page</a> with each device and upload that photo too: timestamps are then corrected automatically."
+"upload.nickname" = "Your nickname"
+"upload.nickname_hint" = "Your nickname is shown next to the photos you upload."
+"upload.continue" = "Continue"

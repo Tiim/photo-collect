@@ -5,6 +5,7 @@ go 1.27.0
 tool github.com/sqlc-dev/sqlc/cmd/sqlc
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/aws/aws-sdk-go-v2 v1.47.1
 	github.com/aws/aws-sdk-go-v2/config v1.33.6
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.6
@@ -12,9 +13,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.4
 	github.com/aws/smithy-go v1.28.2
 	github.com/coreos/go-oidc/v3 v3.21.0
+	github.com/corona10/goimagehash v1.1.0
 	github.com/evanoberholster/imagemeta v1.1.0
 	github.com/gen2brain/heic v0.7.2
 	github.com/makiuchi-d/gozxing v0.1.1
+	github.com/nicksnyder/go-i18n/v2 v2.6.1
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/studio-b12/gowebdav v0.13.0
 	golang.org/x/image v0.46.0
@@ -42,7 +45,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.1 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
-	github.com/corona10/goimagehash v1.1.0 // indirect
 	github.com/cubicdaiya/gonp v1.0.4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect

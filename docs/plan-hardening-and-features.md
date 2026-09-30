@@ -341,7 +341,7 @@ Leaflet map.
 Do this last so that all new strings from stages 1–5 exist. Add English keys as each earlier stage
 lands to avoid a large catch-up (see "Working agreement").
 
-### 6.1 Infrastructure
+### 6.1 Infrastructure — DONE (base layout and upload page converted; the rest is 6.2)
 - Use an existing i18n library instead of a custom one: **`github.com/nicksnyder/go-i18n/v2`**
   (with `golang.org/x/text/language` for tag matching, which is already in `go.mod`). It provides
   message bundles, CLDR plural rules and template arguments, and its `goi18n extract` / `merge`
