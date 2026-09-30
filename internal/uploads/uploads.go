@@ -39,6 +39,7 @@ var (
 type Limits struct {
 	MaxFileSize        int64
 	MaxImagesPerFolder int
+	MaxPixels          int64
 }
 
 type Service struct {
@@ -79,7 +80,7 @@ func (s *Service) Ingest(ctx context.Context, folderID, nickname, filename strin
 		return nil, ErrEmptyFile
 	}
 
-	info, err := images.Inspect(tmp)
+	info, err := images.Inspect(tmp, s.limits.MaxPixels)
 	if err != nil {
 		return nil, err
 	}

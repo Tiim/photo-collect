@@ -41,6 +41,7 @@ type Config struct {
 	UploadMaxFileSize        int64
 	UploadMaxFilesPerRequest int
 	UploadMaxImagesPerFolder int
+	UploadMaxPixels          int64
 	UploadLinkDuration       time.Duration
 
 	ThumbnailSize int
@@ -84,6 +85,7 @@ func Load() (*Config, error) {
 		UploadMaxFileSize:        e.int64("UPLOAD_MAX_FILE_SIZE", 50<<20),
 		UploadMaxFilesPerRequest: int(e.int64("UPLOAD_MAX_FILES_PER_REQUEST", 50)),
 		UploadMaxImagesPerFolder: int(e.int64("UPLOAD_MAX_IMAGES_PER_FOLDER", 5000)),
+		UploadMaxPixels:          e.int64("UPLOAD_MAX_PIXELS", 60_000_000),
 		UploadLinkDuration:       e.duration("UPLOAD_LINK_DURATION", 7*24*time.Hour),
 
 		ThumbnailSize: int(e.int64("THUMBNAIL_SIZE", 400)),
@@ -127,6 +129,9 @@ func (c *Config) validate() error {
 		req("WEBDAV_PASSWORD", c.WebDAVPassword)
 	default:
 		errs = append(errs, fmt.Errorf("STORAGE_BACKEND must be \"filesystem\", \"s3\" or \"webdav\", got %q", c.StorageBackend))
+	}
+	if c.UploadMaxPixels < 1 {
+		errs = append(errs, errors.New("UPLOAD_MAX_PIXELS must be >= 1"))
 	}
 	if c.WorkerCount < 1 {
 		errs = append(errs, errors.New("WORKER_COUNT must be >= 1"))

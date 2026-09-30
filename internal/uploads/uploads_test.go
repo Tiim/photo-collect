@@ -54,7 +54,7 @@ func newFixture(t *testing.T) *fixture {
 	}
 	return &fixture{
 		t: t, ctx: ctx, db: db, folder: f.ID, ids: map[string]string{},
-		svc: uploads.New(db, store, queue, uploads.Limits{MaxFileSize: 10 << 20, MaxImagesPerFolder: 100}, log),
+		svc: uploads.New(db, store, queue, uploads.Limits{MaxFileSize: 10 << 20, MaxImagesPerFolder: 100, MaxPixels: 60_000_000}, log),
 	}
 }
 

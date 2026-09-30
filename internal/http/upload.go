@@ -198,6 +198,8 @@ func (s *Server) uploadErrorMessage(err error, folderID, name string) string {
 		msg = images.ErrAnimated.Error()
 	case errors.Is(err, images.ErrNotAnImage), errors.Is(err, images.ErrUnsupported):
 		msg = images.ErrNotAnImage.Error()
+	case errors.Is(err, images.ErrTooManyPixels):
+		msg = "Image resolution is too large"
 	case errors.Is(err, images.ErrCorrupt):
 		msg = images.ErrCorrupt.Error()
 	}

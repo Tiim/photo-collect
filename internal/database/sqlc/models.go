@@ -60,6 +60,8 @@ type Image struct {
 	CalibRefTime      sql.NullString
 	TimeOffsetSeconds sql.NullInt64
 	Phash             sql.NullInt64
+	PhashAttemptedAt  sql.NullString
+	DerivativeVersion int64
 }
 
 type ImageDuplicate struct {

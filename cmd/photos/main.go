@@ -189,6 +189,7 @@ func serve(log *slog.Logger) error {
 	}
 	up := uploads.New(db, store, queue, uploads.Limits{
 		MaxFileSize: cfg.UploadMaxFileSize, MaxImagesPerFolder: cfg.UploadMaxImagesPerFolder,
+		MaxPixels: cfg.UploadMaxPixels,
 	}, log)
 
 	srv, err := apphttp.NewServer(apphttp.Deps{

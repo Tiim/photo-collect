@@ -60,7 +60,7 @@ func setup(t *testing.T) *env {
 	}
 	cfg := &config.Config{
 		BaseURL: "http://example.test", SessionSecret: strings.Repeat("s", 32), SessionTTL: time.Hour,
-		UploadMaxFileSize: 1 << 20, UploadMaxFilesPerRequest: 5, UploadMaxImagesPerFolder: 3,
+		UploadMaxFileSize: 1 << 20, UploadMaxFilesPerRequest: 5, UploadMaxImagesPerFolder: 3, UploadMaxPixels: 60_000_000,
 		UploadLinkDuration: 24 * time.Hour, ThumbnailSize: 40, PreviewSize: 80, ExportTTL: time.Hour,
 	}
 	signer := sessions.NewSigner(cfg.SessionSecret)
@@ -71,7 +71,7 @@ func setup(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	up := uploads.New(db, store, queue, uploads.Limits{MaxFileSize: cfg.UploadMaxFileSize, MaxImagesPerFolder: cfg.UploadMaxImagesPerFolder}, log)
+	up := uploads.New(db, store, queue, uploads.Limits{MaxFileSize: cfg.UploadMaxFileSize, MaxImagesPerFolder: cfg.UploadMaxImagesPerFolder, MaxPixels: cfg.UploadMaxPixels}, log)
 	go queue.Run(ctx, 2)
 
 	srv, err := apphttp.NewServer(apphttp.Deps{
