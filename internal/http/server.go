@@ -14,8 +14,10 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/tiim/photo-collect/internal/clientip"
 	"github.com/tiim/photo-collect/internal/config"
 	"github.com/tiim/photo-collect/internal/database"
 	"github.com/tiim/photo-collect/internal/downloads"
@@ -42,6 +44,9 @@ type Server struct {
 	pages     map[string]*template.Template
 	secure    bool
 	i18n      *i18n.Bundle
+
+	clientIPs *clientip.Resolver
+	warnProxy sync.Once
 }
 
 type Deps struct {
@@ -61,7 +66,8 @@ func NewServer(d Deps) (*Server, error) {
 	s := &Server{
 		cfg: d.Config, db: d.DB, store: d.Store, sessions: d.Sessions, signer: d.Signer,
 		oidc: d.OIDC, uploads: d.Uploads, downloads: d.Downloads, queue: d.Queue, log: d.Log,
-		secure: strings.HasPrefix(d.Config.BaseURL, "https://"),
+		secure:    strings.HasPrefix(d.Config.BaseURL, "https://"),
+		clientIPs: clientip.NewResolver(d.Config.TrustedProxies),
 	}
 	bundle, err := i18n.New(web.FS, "locales", d.Log)
 	if err != nil {
@@ -124,7 +130,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /images/{id}/tags/{tag}/delete", s.auth(s.imageTagRemove))
 	mux.Handle("GET /tags/suggest", s.auth(s.tagSuggest))
 
-	return chain(mux, s.recoverer, s.securityHeaders, s.lang, s.accessLog)
+	return chain(mux, s.recoverer, s.securityHeaders, s.lang, s.accessLog, s.realIP)
 }
 
 func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {

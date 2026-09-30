@@ -96,6 +96,16 @@ func (m *Manager) Get(r *http.Request) (*Session, error) {
 	return &Session{TokenHash: hash, UserID: row.UserID, Email: row.Email, Name: row.Name, CSRFToken: row.CsrfToken}, nil
 }
 
+// Delete removes the session presented with r from the database without
+// touching cookies (used to rotate the session on login).
+func (m *Manager) Delete(ctx context.Context, r *http.Request) error {
+	c, err := r.Cookie(CookieName)
+	if err != nil || c.Value == "" {
+		return nil
+	}
+	return m.db.Q.DeleteSession(ctx, hashToken(c.Value))
+}
+
 // Destroy deletes the current session and clears the cookie.
 func (m *Manager) Destroy(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(CookieName); err == nil {

@@ -4,10 +4,14 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tiim/photo-collect/internal/clientip"
 )
 
 type Config struct {
@@ -34,6 +38,11 @@ type Config struct {
 	OIDCClientID     string
 	OIDCClientSecret string
 	OIDCRedirectURL  string
+	// OIDCRequireVerifiedEmail rejects logins whose email_verified claim is false.
+	OIDCRequireVerifiedEmail bool
+
+	// TrustedProxies are the peers whose X-Forwarded-For header is believed.
+	TrustedProxies []netip.Prefix
 
 	SessionSecret string
 	SessionTTL    time.Duration
@@ -79,6 +88,8 @@ func Load() (*Config, error) {
 		OIDCClientSecret: e.str("OIDC_CLIENT_SECRET", ""),
 		OIDCRedirectURL:  e.str("OIDC_REDIRECT_URL", ""),
 
+		OIDCRequireVerifiedEmail: e.boolean("OIDC_REQUIRE_VERIFIED_EMAIL", true),
+
 		SessionSecret: e.str("SESSION_SECRET", ""),
 		SessionTTL:    e.duration("SESSION_TTL", 30*24*time.Hour),
 
@@ -94,6 +105,12 @@ func Load() (*Config, error) {
 		WorkerCount: int(e.int64("WORKER_COUNT", 2)),
 		ExportDir:   e.str("EXPORT_DIR", "/data/exports"),
 		ExportTTL:   e.duration("EXPORT_TTL", 24*time.Hour),
+	}
+	if v := e.str("TRUSTED_PROXIES", ""); v != "" {
+		var err error
+		if c.TrustedProxies, err = clientip.ParseTrusted(v); err != nil {
+			e.errs = append(e.errs, fmt.Errorf("TRUSTED_PROXIES: %w", err))
+		}
 	}
 	if err := c.validate(); err != nil {
 		e.errs = append(e.errs, err)
@@ -137,6 +154,29 @@ func (c *Config) validate() error {
 		errs = append(errs, errors.New("WORKER_COUNT must be >= 1"))
 	}
 	return errors.Join(errs...)
+}
+
+// Warnings returns non-fatal configuration problems worth logging at startup.
+func (c *Config) Warnings() []string {
+	var w []string
+	if strings.HasPrefix(c.BaseURL, "http://") && !loopbackListener(c.ListenAddr) {
+		w = append(w, "BASE_URL is http:// but the server listens on a non-loopback address; "+
+			"sessions and upload links travel unencrypted unless a TLS proxy terminates in front")
+	}
+	return w
+}
+
+// loopbackListener reports whether addr only accepts local connections.
+func loopbackListener(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip, err := netip.ParseAddr(host)
+	return err == nil && ip.IsLoopback()
 }
 
 type envReader struct{ errs []error }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tiim/photo-collect/internal/clientip"
 	"github.com/tiim/photo-collect/internal/sessions"
 )
 
@@ -63,6 +64,20 @@ func (s *Server) auth(next http.HandlerFunc) http.Handler {
 			}
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, sess)))
+	})
+}
+
+// realIP resolves the client address (honouring X-Forwarded-For only from
+// trusted proxies) and stores it in the request context for logging and rate limiting.
+func (s *Server) realIP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.secure && !s.clientIPs.HasTrusted() && r.Header.Get("X-Forwarded-For") != "" {
+			s.warnProxy.Do(func() {
+				s.log.Warn("request carries X-Forwarded-For but TRUSTED_PROXIES is empty; " +
+					"all clients appear to have the proxy's address. Set TRUSTED_PROXIES (e.g. \"private\") if a reverse proxy is in front")
+			})
+		}
+		next.ServeHTTP(w, r.WithContext(clientip.WithContext(r.Context(), s.clientIPs.IP(r))))
 	})
 }
 
@@ -133,7 +148,7 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" || strings.HasPrefix(r.URL.Path, "/static/") {
 			return
 		}
-		s.log.Info("request", "method", r.Method, "route", routeLabel(r), "status", sw.status, "duration_ms", time.Since(start).Milliseconds())
+		s.log.Info("request", "method", r.Method, "route", routeLabel(r), "remote", clientip.String(r.Context()), "status", sw.status, "duration_ms", time.Since(start).Milliseconds())
 	})
 }
 
