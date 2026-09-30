@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/tiim/photo-collect/internal/clientip"
 	"github.com/tiim/photo-collect/internal/database"
 	"github.com/tiim/photo-collect/internal/database/sqlc"
 	"github.com/tiim/photo-collect/internal/domain"
@@ -136,6 +137,19 @@ func (s *Server) uploadImages(w http.ResponseWriter, r *http.Request) {
 	if nick == "" {
 		writeJSON(w, http.StatusForbidden, []uploadResult{{Error: "Please enter a nickname first"}})
 		return
+	}
+	// Bound the number of uploads being written at once so parallel requests
+	// cannot fill the temp directory; excess clients retry shortly.
+	if s.ingestSlots != nil {
+		select {
+		case s.ingestSlots <- struct{}{}:
+			defer func() { <-s.ingestSlots }()
+		default:
+			s.log.Info("upload rejected: server busy", "route", routeLabel(r), "remote", clientip.String(r.Context()))
+			w.Header().Set("Retry-After", "5")
+			writeJSON(w, http.StatusServiceUnavailable, []uploadResult{{Error: "The server is busy, please try again"}})
+			return
+		}
 	}
 	mt, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mt != "multipart/form-data" || params["boundary"] == "" {

@@ -271,3 +271,32 @@ func TestBackfillSkipsUndecodableAndQueuedImages(t *testing.T) {
 		t.Fatalf("listed %v, want [todo]", got)
 	}
 }
+
+func TestDeferDoesNotConsumeAttempts(t *testing.T) {
+	db := open(t)
+	q := jobs.New(db, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	var calls atomic.Int32
+	seen := make(chan int, 1)
+	q.Handle("busy", func(ctx context.Context, p json.RawMessage) error {
+		// More deferrals than the retry limit: the job must still not fail.
+		if n := calls.Add(1); n <= 8 {
+			return jobs.Defer(0)
+		}
+		var attempts int
+		db.QueryRow("SELECT attempts FROM jobs").Scan(&attempts)
+		seen <- attempts
+		return nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go q.Run(ctx, 1)
+	q.Enqueue(ctx, db.Q, "busy", nil)
+	select {
+	case attempts := <-seen:
+		if attempts != 1 {
+			t.Errorf("attempts = %d, want 1", attempts)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("job did not complete, %d calls", calls.Load())
+	}
+}

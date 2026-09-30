@@ -545,7 +545,13 @@ The upload implementation must:
 
 Malware scanning is not required initially.
 
-Rate limiting is not required initially.
+Abuse protection (a leaked link must not exhaust CPU or disk):
+- In-memory rate limits per client IP and per upload link on the upload routes, per IP on the login
+  routes and on nickname changes. Exceeding a limit returns `429` with `Retry-After`; the upload
+  page treats this as retryable and backs off.
+- A cap on upload requests ingested concurrently (`503` with `Retry-After` beyond it).
+- ZIP exports: a cap on concurrent builds and on the total size of the originals per export.
+- No per-folder or per-nickname byte quotas.
 
 ## 22. HTTP architecture
 
@@ -695,6 +701,15 @@ UPLOAD_MAX_FILE_SIZE
 UPLOAD_MAX_FILES_PER_REQUEST
 UPLOAD_MAX_IMAGES_PER_FOLDER
 UPLOAD_MAX_PIXELS
+UPLOAD_MAX_CONCURRENT
+
+RATE_UPLOAD_PER_IP
+RATE_UPLOAD_PER_LINK
+RATE_AUTH_PER_IP
+RATE_NICKNAME_PER_IP
+
+EXPORT_MAX_CONCURRENT
+EXPORT_MAX_BYTES
 
 UPLOAD_LINK_DURATION
 

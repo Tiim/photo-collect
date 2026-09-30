@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"net/url"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/tiim/photo-collect/internal/clientip"
+	"github.com/tiim/photo-collect/internal/ratelimit"
 	"github.com/tiim/photo-collect/internal/sessions"
 )
 
@@ -78,6 +80,48 @@ func (s *Server) realIP(next http.Handler) http.Handler {
 			})
 		}
 		next.ServeHTTP(w, r.WithContext(clientip.WithContext(r.Context(), s.clientIPs.IP(r))))
+	})
+}
+
+// limitRule is one rate limit applied to a route. The name is only used for logging.
+type limitRule struct {
+	name string
+	lim  *ratelimit.Limiter
+	key  func(*http.Request) string
+}
+
+// ipKey identifies the client. IPv6 clients are grouped by /64, because a single
+// host typically controls the whole prefix and could otherwise rotate addresses.
+func (s *Server) ipKey(r *http.Request) string {
+	ip := clientip.FromContext(r.Context())
+	if ip.Is6() && !ip.Is4In6() {
+		if p, err := ip.Prefix(64); err == nil {
+			return p.String()
+		}
+	}
+	return ip.String()
+}
+
+func tokenKey(r *http.Request) string { return r.PathValue("token") }
+
+// limited rejects requests with 429 and Retry-After when any rule's limit is exhausted.
+// Disabled limiters (nil) never reject.
+func (s *Server) limited(next http.Handler, rules ...limitRule) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, rule := range rules {
+			wait, ok := rule.lim.Allow(rule.key(r))
+			if ok {
+				continue
+			}
+			// Never log the key: for upload links it is the secret token.
+			s.log.Info("rate limited", "limit", rule.name, "route", routeLabel(r),
+				"remote", clientip.String(r.Context()), "retry_after_s", int(wait/time.Second))
+			w.Header().Set("Retry-After", strconv.Itoa(int(wait/time.Second)))
+			w.Header().Set("Cache-Control", "no-store")
+			http.Error(w, "Too many requests, please slow down and try again shortly", http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 

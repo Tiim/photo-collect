@@ -245,3 +245,15 @@ func (q *Queries) MarkExportRunning(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, markExportRunning, id)
 	return err
 }
+
+const sumExportImageBytes = `-- name: SumExportImageBytes :one
+SELECT CAST(COALESCE(SUM(i.size_bytes), 0) AS INTEGER) FROM export_images ei
+JOIN images i ON i.id = ei.image_id WHERE ei.export_id = ?
+`
+
+func (q *Queries) SumExportImageBytes(ctx context.Context, exportID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, sumExportImageBytes, exportID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}

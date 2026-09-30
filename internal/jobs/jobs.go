@@ -72,6 +72,14 @@ type permanentError struct{ err error }
 func (e *permanentError) Error() string { return e.err.Error() }
 func (e *permanentError) Unwrap() error { return e.err }
 
+// Defer asks the queue to run the job again after d without counting the run
+// as an attempt. Use it when the job cannot start yet (e.g. a concurrency limit).
+func Defer(d time.Duration) error { return &deferError{d} }
+
+type deferError struct{ d time.Duration }
+
+func (e *deferError) Error() string { return "deferred for " + e.d.String() }
+
 // Handler processes a job. It must be idempotent: jobs may run more than once.
 type Handler func(ctx context.Context, payload json.RawMessage) error
 
@@ -208,6 +216,11 @@ func (q *Queue) run(ctx context.Context, job sqlc.Job) {
 	case ctx.Err() != nil:
 		// Shutdown interrupted the job; put it back without counting the attempt as a failure.
 		_ = q.db.Q.RetryJobLater(dbctx, sqlc.RetryJobLaterParams{RunAt: now, Error: sql.NullString{String: "interrupted by shutdown", Valid: true}, ID: job.ID})
+	case isDeferred(err) != nil:
+		d := isDeferred(err).d
+		if e := q.db.Q.DeferJob(dbctx, sqlc.DeferJobParams{RunAt: database.Time(time.Now().Add(d)), ID: job.ID}); e != nil {
+			log.Error("defer job", "err", e)
+		}
 	case job.Attempts >= maxAttempts || isPermanent(err):
 		log.Error("job failed permanently", "err", err)
 		if e := q.db.Q.FailJob(dbctx, sqlc.FailJobParams{FinishedAt: sql.NullString{String: now, Valid: true}, Error: sql.NullString{String: err.Error(), Valid: true}, ID: job.ID}); e != nil {
@@ -225,6 +238,14 @@ func (q *Queue) run(ctx context.Context, job sqlc.Job) {
 func isPermanent(err error) bool {
 	var p *permanentError
 	return errors.As(err, &p)
+}
+
+func isDeferred(err error) *deferError {
+	var d *deferError
+	if errors.As(err, &d) {
+		return d
+	}
+	return nil
 }
 
 func safeCall(ctx context.Context, h Handler, payload json.RawMessage) (err error) {

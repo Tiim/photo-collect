@@ -37,3 +37,6 @@ DELETE FROM jobs WHERE status = 'done' AND finished_at < ?;
 -- name: RescheduleJobByPayload :execrows
 UPDATE jobs SET run_at = ?
 WHERE type = ? AND status = 'pending' AND payload = ?;
+
+-- name: DeferJob :exec
+UPDATE jobs SET status = 'pending', run_at = ?, started_at = NULL, attempts = MAX(attempts - 1, 0) WHERE id = ?;
