@@ -25,19 +25,13 @@ type ImageView struct {
 	Next   string
 }
 
-// MapView is the location shown in the image detail (coordinates and a link;
-// the only map is the folder map).
+// MapView is the location shown in the image detail (coordinates and a map).
 type MapView struct {
 	Lat, Lon float64
 }
 
 // Coords formats the position for display.
 func (m MapView) Coords() string { return fmt.Sprintf("%.5f, %.5f", m.Lat, m.Lon) }
-
-// OSMURL links to the position on openstreetmap.org.
-func (m MapView) OSMURL() string {
-	return fmt.Sprintf("https://www.openstreetmap.org/?mlat=%.6f&mlon=%.6f#map=16/%.6f/%.6f", m.Lat, m.Lon, m.Lat, m.Lon)
-}
 
 type TagsView struct {
 	ImageID string
@@ -90,6 +84,9 @@ func (s *Server) imageShow(w http.ResponseWriter, r *http.Request) {
 	if v.Next, nerr = neighbour(s.db.Q.NextImageID(r.Context(), sqlc.NextImageIDParams{FolderID: img.FolderID, Seq: img.Seq})); nerr != nil {
 		s.serverError(w, r, nerr)
 		return
+	}
+	if v.Map != nil {
+		allowMapTiles(w) // the detail map loads tiles
 	}
 	if isHTMX(r) {
 		s.fragment(w, r, "image_detail", v)

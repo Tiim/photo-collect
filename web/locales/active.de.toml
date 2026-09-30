@@ -137,7 +137,6 @@
 "detail.clock_photo_text" = "Zeigt {{.Time}}. Wird verwendet, um die Zeitstempel dieser Kamera zu korrigieren."
 "detail.size" = "Größe"
 "detail.type" = "Typ"
-"detail.open_osm" = "Auf OpenStreetMap öffnen"
 "detail.location" = "Ort"
 "detail.rating" = "Bewertung"
 "detail.tags" = "Tags"

@@ -47,14 +47,13 @@ func TestImageDetailMap(t *testing.T) {
 
 	rec := e.authed("GET", "/images/geo", nil)
 	body := rec.Body.String()
-	for _, want := range []string{"47.37690, 8.54170", "openstreetmap.org/?mlat=47.376900&amp;mlon=8.541700"} {
+	for _, want := range []string{"47.37690, 8.54170", `class="map" data-lat="47.3769" data-lon="8.5417"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("detail lacks %q:\n%s", want, body)
 		}
 	}
-	// The only map is the folder card: the detail has none and loads no tiles.
-	if strings.Contains(body, `class="map`) || strings.Contains(rec.Header().Get("Content-Security-Policy"), tileHost) {
-		t.Errorf("image detail shows a map or allows tiles")
+	if !strings.Contains(rec.Header().Get("Content-Security-Policy"), tileHost) {
+		t.Errorf("image detail map cannot load tiles")
 	}
 
 	// No position: no location section.
@@ -160,7 +159,7 @@ func TestCSPNeverAllowsThirdPartyCode(t *testing.T) {
 		if img := directive(csp, "img-src"); strings.Contains(img, "http") && img != "img-src 'self' data: "+tileHost {
 			t.Errorf("%s: img-src = %q", p, img)
 		}
-		if strings.Contains(csp, tileHost) && p != "/folders/g1" {
+		if strings.Contains(csp, tileHost) && p != "/folders/g1" && p != "/images/geo" {
 			t.Errorf("%s allows the tile host but shows no map", p)
 		}
 	}

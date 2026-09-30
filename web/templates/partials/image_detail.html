@@ -24,7 +24,8 @@
     </dl>
     {{with .Map}}
     <h3>{{t "detail.location"}}</h3>
-    <p>{{.Coords}} · <a href="{{.OSMURL}}" target="_blank" rel="noopener noreferrer">{{t "detail.open_osm"}}</a></p>
+    <div class="map" data-lat="{{.Lat}}" data-lon="{{.Lon}}"><p class="muted small">{{t "map.loading"}}</p></div>
+    <p class="muted small">{{.Coords}}</p>
     {{end}}
     <h3>{{t "detail.rating"}}</h3>
     {{template "rating" .TileView}}

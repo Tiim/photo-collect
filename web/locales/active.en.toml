@@ -138,7 +138,6 @@
 "detail.clock_photo_text" = "Shows {{.Time}}. Used to correct this camera's timestamps."
 "detail.size" = "Size"
 "detail.type" = "Type"
-"detail.open_osm" = "Open on OpenStreetMap"
 "detail.location" = "Location"
 "detail.rating" = "Rating"
 "detail.tags" = "Tags"
