@@ -369,7 +369,8 @@ lands to avoid a large catch-up (see "Working agreement").
 - Language switcher in the base layout (footer or header), and on the upload page which is the
   guest-facing entry point.
 
-### 6.2 Extraction and translation
+### 6.2 Extraction and translation — DONE
+(Deviations: templates are parsed once per language with `t`/`th` bound to that language's localizer, so htmx fragments need no translator in their data and templates use `{{t "id"}}` instead of `{{call $.T ...}}`. Script strings are exposed as one JSON block in the base layout (`jsKeys` in `templates.go`). Plural messages are inline TOML tables. The image detail shows coordinates and an openstreetmap.org link, not a map, matching the code and tests. Binary units (KiB) are kept. The `uploader/…` tag prefix is an identifier and is not translated.)
 - Inventory strings from: `web/templates/**/*.html` (pages and partials), `web/static/app.js`
   (upload statuses; pass strings through `data-*` attributes or a `<script type="application/json"
   id="i18n">` block rendered by the server, not through inline scripts because of CSP), server
@@ -388,7 +389,8 @@ lands to avoid a large catch-up (see "Working agreement").
   the prefix is an identifier, in which case it must stay stable across languages, which it
   should).
 
-### 6.3 Quality gates
+### 6.3 Quality gates — DONE
+(`goi18n merge` is not run in CI: `internal/i18n` tests cover parity, placeholders, plural forms and key usage.)
 - Test that every message ID in `active.en.toml` exists in `active.de.toml` and vice versa (also run
   `goi18n merge` in CI to detect drift), that template placeholders match, and
   that every `t "…"` key used in templates and Go code exists (extract with a small `go test` that
@@ -396,7 +398,7 @@ lands to avoid a large catch-up (see "Working agreement").
 - Golden-ish HTML tests render the upload page in both languages.
 - Adding a language later means adding one TOML file and one tag in the supported list.
 
-**Stage 6 exit**: the whole UI is available in English and German, switchable by the user.
+**Stage 6 exit** (all steps done): the whole UI is available in English and German, switchable by the user.
 
 ---
 

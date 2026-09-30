@@ -51,13 +51,13 @@ func (s *Server) exportCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
+		s.fail(w, r, http.StatusBadRequest, "err.bad_request")
 		return
 	}
 	var ids []string
 	if r.URL.Query().Get("matching") == "1" {
 		// Everything that matches the filter in the query string, resolved now.
-		flt, ok := parseFilter(w, r)
+		flt, ok := s.parseFilter(w, r)
 		if !ok {
 			return
 		}
@@ -67,13 +67,13 @@ func (s *Server) exportCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(ids) == 0 {
-			http.Error(w, "No photos match the filter", http.StatusBadRequest)
+			s.fail(w, r, http.StatusBadRequest, "err.filter_none")
 			return
 		}
 	} else if r.PostFormValue("all") != "1" {
 		ids = r.PostForm["image"]
 		if len(ids) == 0 {
-			http.Error(w, "Select at least one image", http.StatusBadRequest)
+			s.fail(w, r, http.StatusBadRequest, "err.select_one")
 			return
 		}
 	}
@@ -88,7 +88,7 @@ func (s *Server) exportCreate(w http.ResponseWriter, r *http.Request) {
 			s.serverError(w, r, err)
 			return
 		}
-		v.Error = tooLarge.Error()
+		v.Error, _ = s.errText(r, tooLarge)
 		s.fragment(w, r, "exports", v)
 		return
 	}

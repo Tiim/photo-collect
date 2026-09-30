@@ -855,6 +855,43 @@ func (q *Queries) MarkThumbnailReady(ctx context.Context, id string) error {
 	return err
 }
 
+const nextImageID = `-- name: NextImageID :one
+SELECT id FROM images
+WHERE folder_id = ? AND deleted_at IS NULL AND seq > ?
+ORDER BY seq ASC LIMIT 1
+`
+
+type NextImageIDParams struct {
+	FolderID string
+	Seq      int64
+}
+
+func (q *Queries) NextImageID(ctx context.Context, arg NextImageIDParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, nextImageID, arg.FolderID, arg.Seq)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const prevImageID = `-- name: PrevImageID :one
+SELECT id FROM images
+WHERE folder_id = ? AND deleted_at IS NULL AND seq < ?
+ORDER BY seq DESC LIMIT 1
+`
+
+type PrevImageIDParams struct {
+	FolderID string
+	Seq      int64
+}
+
+// Neighbours in upload order, for the previous/next links of the detail view.
+func (q *Queries) PrevImageID(ctx context.Context, arg PrevImageIDParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, prevImageID, arg.FolderID, arg.Seq)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const recomputeDeviceOffsets = `-- name: RecomputeDeviceOffsets :exec
 UPDATE images SET time_offset_seconds = (
     SELECT CAST(strftime('%s', c.calib_ref_time) AS INTEGER) - CAST(strftime('%s', c.exif_time) AS INTEGER)

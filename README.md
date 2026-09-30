@@ -131,11 +131,18 @@ Restrict who may sign in with an Authentik policy/group binding on the applicati
 - Jobs are persisted in SQLite and resume after a restart (orphaned running jobs are requeued).
 - Upload link tokens are stored in the database (so members can copy the link again) and are
   never logged; request logs use route patterns instead of raw paths.
-- Languages: the UI language is chosen by `?lang=` (remembered in a `lang` cookie for a year),
-  then the cookie, then `Accept-Language`, then English. Catalogs are TOML files in
-  `web/locales/` (`active.<lang>.toml`); adding a language means adding one file and a name in
-  `internal/http/lang.go`. Templates call `{{call $.T "message.id"}}`; missing messages fall
-  back to English, then to the ID. Only the base layout and the upload page are translated so far.
+- Languages: English and German (informal "du"). The UI language is chosen by `?lang=`
+  (remembered in a `lang` cookie for a year), then the cookie, then `Accept-Language`, then
+  English. Catalogs are TOML files in `web/locales/` (`active.<lang>.toml`, go-i18n message
+  format with `one`/`other` plural forms); adding a language means adding one file and a name in
+  `internal/http/lang.go`. Templates call `{{t "message.id"}}` (`{{th ...}}` for messages with
+  markup); templates are parsed once per language, so htmx fragments are translated as well.
+  The upload and clock scripts read their texts from a JSON block in the page. Validation errors
+  carry a message ID (`domain.UserError`) and are translated where the request language is known.
+  Dates and file sizes follow the language (`30.09.2026 14:05`, `1,5 KiB` in German). Missing
+  messages fall back to English, then to the ID. Log messages and tag names are not translated.
+  `go test ./internal/i18n` checks that both catalogs have the same IDs, placeholders and plural
+  forms, and that every ID used in templates, scripts and Go code exists and is used.
 
 ## Development
 

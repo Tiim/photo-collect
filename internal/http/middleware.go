@@ -48,7 +48,7 @@ func (s *Server) auth(next http.HandlerFunc) http.Handler {
 				http.Redirect(w, r, "/auth/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
 				return
 			}
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			s.fail(w, r, http.StatusUnauthorized, "err.unauthorized")
 			return
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -61,7 +61,7 @@ func (s *Server) auth(next http.HandlerFunc) http.Handler {
 			if !originOK || !tokenOK {
 				s.log.Warn("csrf check failed", "route", routeLabel(r), "user_id", sess.UserID,
 					"origin", r.Header.Get("Origin"), "origin_ok", originOK, "token_present", tok != "", "token_ok", tokenOK)
-				http.Error(w, "Forbidden", http.StatusForbidden)
+				s.fail(w, r, http.StatusForbidden, "err.forbidden")
 				return
 			}
 		}
@@ -118,7 +118,7 @@ func (s *Server) limited(next http.Handler, rules ...limitRule) http.Handler {
 				"remote", clientip.String(r.Context()), "retry_after_s", int(wait/time.Second))
 			w.Header().Set("Retry-After", strconv.Itoa(int(wait/time.Second)))
 			w.Header().Set("Cache-Control", "no-store")
-			http.Error(w, "Too many requests, please slow down and try again shortly", http.StatusTooManyRequests)
+			s.fail(w, r, http.StatusTooManyRequests, "err.too_many_requests")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -133,7 +133,7 @@ func (s *Server) recoverer(next http.Handler) http.Handler {
 					panic(rec)
 				}
 				s.log.Error("panic in handler", "route", routeLabel(r), "panic", rec, "stack", string(debug.Stack()))
-				http.Error(w, "Something went wrong", http.StatusInternalServerError)
+				s.fail(w, r, http.StatusInternalServerError, "err.internal")
 			}
 		}()
 		next.ServeHTTP(w, r)

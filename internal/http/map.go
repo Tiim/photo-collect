@@ -38,7 +38,7 @@ func (s *Server) folderMapJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	flt, ok := parseFilter(w, r)
+	flt, ok := s.parseFilter(w, r)
 	if !ok {
 		return
 	}

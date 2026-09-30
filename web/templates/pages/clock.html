@@ -1,23 +1,21 @@
 {{define "content"}}
 <div class="clock-page">
-  <h1>Camera clock check</h1>
-  <p class="muted">Photograph this screen with <strong>every camera or phone</strong> you take pictures with,
-    so that photos from devices with a wrong clock can be put in the right order.
-    Then upload the photo together with your others. Fill the frame with the code and keep it sharp.</p>
+  <h1>{{t "clock.title"}}</h1>
+  <p class="muted">{{th "clock.intro"}}</p>
 
   <div class="clock-card">
-    <div id="clock-qr" class="clock-qr" aria-label="Current time as QR code"></div>
+    <div id="clock-qr" class="clock-qr" aria-label="{{t "clock.qr_label"}}"></div>
     <div id="clock-time" class="clock-time">--:--:--</div>
     <div id="clock-date" class="clock-date">&nbsp;</div>
   </div>
   <p id="clock-status" class="muted small" role="status"></p>
-  <noscript><p class="error">This page needs JavaScript to show the current time.</p></noscript>
+  <noscript><p class="error">{{t "clock.noscript"}}</p></noscript>
 
   <p class="row">
     {{if .Session}}
-    <a class="button" href="/folders">Go to folders</a>
+    <a class="button" href="/folders">{{t "clock.go_folders"}}</a>
     {{else}}
-    <a class="button" href="/auth/login">Sign in</a>
+    <a class="button" href="/auth/login">{{t "clock.sign_in"}}</a>
     {{end}}
   </p>
 </div>

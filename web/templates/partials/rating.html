@@ -1,8 +1,8 @@
 {{define "rating"}}
 <div id="rating" class="rating" hx-target="this" hx-swap="outerHTML">
   {{$id := .ID}}{{$r := .RatingValue}}
-  {{range seq 1 5}}<button type="button" class="star{{if le . $r}} on{{end}}" title="{{.}} star(s)" hx-post="/images/{{$id}}/rating" hx-vals='{"rating": "{{.}}"}'>★</button>{{end}}
-  {{if $r}}<button type="button" class="link" hx-post="/images/{{$id}}/rating" hx-vals='{"rating": "0"}'>clear</button>{{end}}
+  {{range seq 1 5}}<button type="button" class="star{{if le . $r}} on{{end}}" title="{{t "rating.stars" (dict "Count" .)}}" hx-post="/images/{{$id}}/rating" hx-vals='{"rating": "{{.}}"}'>★</button>{{end}}
+  {{if $r}}<button type="button" class="link" hx-post="/images/{{$id}}/rating" hx-vals='{"rating": "0"}'>{{t "rating.clear"}}</button>{{end}}
 </div>
 {{end}}
 {{define "rating_response"}}{{template "rating" .}}<span id="tile-rating-{{.ID}}" class="stars" hx-swap-oob="true">{{template "stars" .RatingValue}}</span>{{end}}

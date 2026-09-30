@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"encoding/base64"
-	"errors"
 	"path"
 	"strconv"
 	"strings"
@@ -49,14 +48,14 @@ func mustRand(b []byte) {
 func CleanNickname(s string) (string, error) {
 	s = strings.Join(strings.Fields(strings.TrimSpace(s)), " ")
 	if s == "" {
-		return "", errors.New("please enter a nickname")
+		return "", UserErr("err.nickname_empty", "please enter a nickname")
 	}
 	if len([]rune(s)) > MaxNicknameLen {
-		return "", errors.New("nickname is too long")
+		return "", UserErr("err.nickname_long", "nickname is too long", map[string]any{"Max": MaxNicknameLen})
 	}
 	for _, r := range s {
 		if unicode.IsControl(r) {
-			return "", errors.New("nickname contains invalid characters")
+			return "", UserErr("err.nickname_invalid", "nickname contains invalid characters")
 		}
 	}
 	return s, nil
@@ -103,14 +102,14 @@ func UploaderTag(nickname string) string { return UploaderPrefix + Slug(nickname
 func NormalizeTag(s string) (string, error) {
 	s = strings.ToLower(strings.Join(strings.Fields(s), " "))
 	if s == "" {
-		return "", errors.New("tag is empty")
+		return "", UserErr("err.tag_empty", "tag is empty")
 	}
 	if len([]rune(s)) > MaxTagLen {
-		return "", errors.New("tag is too long")
+		return "", UserErr("err.tag_long", "tag is too long", map[string]any{"Max": MaxTagLen})
 	}
 	for _, r := range s {
 		if unicode.IsControl(r) || r == ',' || r == '<' || r == '>' {
-			return "", errors.New("tag contains invalid characters")
+			return "", UserErr("err.tag_invalid", "tag contains invalid characters")
 		}
 	}
 	return s, nil
@@ -160,4 +159,24 @@ func UniqueNames(names []string) []string {
 		out[i] = cand + ext
 	}
 	return out
+}
+
+// UserError is a validation error shown to the user. Key is the message ID of
+// the catalog entry and Args its template data; the layer that knows the
+// request language translates it. Error returns the English text for logs.
+type UserError struct {
+	Key  string
+	Args map[string]any
+	Msg  string
+}
+
+func (e *UserError) Error() string { return e.Msg }
+
+// UserErr builds a UserError; args is optional.
+func UserErr(key, msg string, args ...map[string]any) *UserError {
+	e := &UserError{Key: key, Msg: msg}
+	if len(args) > 0 {
+		e.Args = args[0]
+	}
+	return e
 }

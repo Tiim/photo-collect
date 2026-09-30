@@ -1,23 +1,23 @@
 {{define "upload_link"}}
 <div id="upload-link" hx-target="this" hx-swap="outerHTML">
 {{if .Exists}}
-  <div class="row"><input id="link-url" type="text" readonly value="{{.URL}}"><button type="button" class="secondary" data-copy="#link-url">Copy</button></div>
-  <p>{{if .Expired}}<span class="error">Expired</span> on{{else}}Expires{{end}} {{date .ExpiresAt}}</p>
+  <div class="row"><input id="link-url" type="text" readonly value="{{.URL}}"><button type="button" class="secondary" data-copy="#link-url">{{t "link.copy"}}</button></div>
+  <p>{{if .Expired}}{{th "link.expired_on" (dict "Date" (date .ExpiresAt))}}{{else}}{{t "link.expires" (dict "Date" (date .ExpiresAt))}}{{end}}</p>
   <form hx-post="/folders/{{.FolderID}}/upload-link/extend" class="row">
-    <label>Valid for <input type="number" name="days" value="{{.DefaultDays}}" min="1" max="365" class="days"> days from now</label>
-    <button type="submit">Extend</button>
+    <label>{{t "link.valid_for"}} <input type="number" name="days" value="{{.DefaultDays}}" min="1" max="365" class="days"> {{t "link.days_from_now"}}</label>
+    <button type="submit">{{t "link.extend"}}</button>
   </form>
   <div class="row">
     <button type="button" class="secondary" hx-post="/folders/{{.FolderID}}/upload-link"
-            hx-confirm="Generate a new link? The current link stops working immediately.">Regenerate</button>
+            hx-confirm="{{t "link.regenerate_confirm"}}">{{t "link.regenerate"}}</button>
     <button type="button" class="danger" hx-post="/folders/{{.FolderID}}/upload-link/revoke"
-            hx-confirm="Revoke the upload link? Nobody will be able to upload with it anymore.">Revoke</button>
+            hx-confirm="{{t "link.revoke_confirm"}}">{{t "link.revoke"}}</button>
   </div>
 {{else}}
-  <p class="muted">No active upload link.</p>
+  <p class="muted">{{t "link.none"}}</p>
   <form hx-post="/folders/{{.FolderID}}/upload-link" class="row">
-    <label>Valid for <input type="number" name="days" value="{{.DefaultDays}}" min="1" max="365" class="days"> days</label>
-    <button type="submit">Create link</button>
+    <label>{{t "link.valid_for"}} <input type="number" name="days" value="{{.DefaultDays}}" min="1" max="365" class="days"> {{t "link.days"}}</label>
+    <button type="submit">{{t "link.create"}}</button>
   </form>
 {{end}}
 </div>

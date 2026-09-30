@@ -2,46 +2,46 @@
 <div class="panel filter-card">
 <form id="filter-form" class="filter" method="get" action="/folders/{{.FolderID}}"
       hx-get="/folders/{{.FolderID}}/gallery" hx-target="#gallery" hx-swap="innerHTML" hx-trigger="submit, change">
-  <label class="wide">Tags
-    <input type="text" name="tag" value="{{.F.TagsCSV}}" list="filter-tag-options" placeholder="e.g. forrest, summer" maxlength="700" autocomplete="off"
+  <label class="wide">{{t "filter.tags"}}
+    <input type="text" name="tag" value="{{.F.TagsCSV}}" list="filter-tag-options" placeholder="{{t "filter.tags_placeholder"}}" maxlength="700" autocomplete="off"
            hx-get="/tags/suggest" hx-trigger="input changed delay:200ms" hx-target="#filter-tag-options" hx-swap="innerHTML">
     <datalist id="filter-tag-options"></datalist>
   </label>
-  <label>Match
+  <label>{{t "filter.match"}}
     <select name="tag_mode">
-      <option value="all"{{if ne .F.TagMode "any"}} selected{{end}}>all tags</option>
-      <option value="any"{{if eq .F.TagMode "any"}} selected{{end}}>any tag</option>
+      <option value="all"{{if ne .F.TagMode "any"}} selected{{end}}>{{t "filter.match_all"}}</option>
+      <option value="any"{{if eq .F.TagMode "any"}} selected{{end}}>{{t "filter.match_any"}}</option>
     </select>
   </label>
-  <label>Rating
+  <label>{{t "filter.rating"}}
     <select name="rating_min">
-      <option value="">any</option>
-      {{range seq 1 5}}<option value="{{.}}"{{if eq $.F.RatingMin .}} selected{{end}}>{{.}}+ stars</option>{{end}}
+      <option value="">{{t "filter.rating_any"}}</option>
+      {{range seq 1 5}}<option value="{{.}}"{{if eq $.F.RatingMin .}} selected{{end}}>{{t "filter.rating_min" (dict "N" .)}}</option>{{end}}
     </select>
   </label>
-  <label>Uploader
+  <label>{{t "filter.uploader"}}
     <select name="uploader">
-      <option value="">everyone</option>
+      <option value="">{{t "filter.everyone"}}</option>
       {{range .Uploaders}}<option value="{{.}}"{{if eq $.F.Uploader .}} selected{{end}}>{{.}}</option>{{end}}
     </select>
   </label>
-  <label>From <input type="date" name="from" value="{{.F.From}}"></label>
-  <label>To <input type="date" name="to" value="{{.F.To}}"></label>
-  <label class="check"><input type="checkbox" name="has_gps" value="1"{{if .F.HasGPS}} checked{{end}}> With location</label>
-  <label class="wide">Sort
+  <label>{{t "filter.from"}} <input type="date" name="from" value="{{.F.From}}"></label>
+  <label>{{t "filter.to"}} <input type="date" name="to" value="{{.F.To}}"></label>
+  <label class="check"><input type="checkbox" name="has_gps" value="1"{{if .F.HasGPS}} checked{{end}}> {{t "filter.with_location"}}</label>
+  <label class="wide">{{t "filter.sort"}}
     <span class="sortpair"><select name="sort">
-      <option value="uploaded"{{if eq .F.Sort "uploaded"}} selected{{end}}>uploaded</option>
-      <option value="captured"{{if eq .F.Sort "captured"}} selected{{end}}>taken</option>
-      <option value="rating"{{if eq .F.Sort "rating"}} selected{{end}}>rating</option>
+      <option value="uploaded"{{if eq .F.Sort "uploaded"}} selected{{end}}>{{t "filter.sort_uploaded"}}</option>
+      <option value="captured"{{if eq .F.Sort "captured"}} selected{{end}}>{{t "filter.sort_captured"}}</option>
+      <option value="rating"{{if eq .F.Sort "rating"}} selected{{end}}>{{t "filter.sort_rating"}}</option>
     </select>
-    <select name="dir" aria-label="Sort direction">
-      <option value="desc"{{if eq .F.Dir "desc"}} selected{{end}}>newest / best first</option>
-      <option value="asc"{{if eq .F.Dir "asc"}} selected{{end}}>oldest / worst first</option>
+    <select name="dir" aria-label="{{t "filter.dir_label"}}">
+      <option value="desc"{{if eq .F.Dir "desc"}} selected{{end}}>{{t "filter.dir_desc"}}</option>
+      <option value="asc"{{if eq .F.Dir "asc"}} selected{{end}}>{{t "filter.dir_asc"}}</option>
     </select></span>
   </label>
   <div class="filter-actions">
-    <a class="button secondary" href="/folders/{{.FolderID}}">Clear</a>
-    <button type="submit">Apply</button>
+    <a class="button secondary" href="/folders/{{.FolderID}}">{{t "filter.clear"}}</a>
+    <button type="submit">{{t "filter.apply"}}</button>
   </div>
 </form>
 </div>
@@ -49,23 +49,23 @@
 
 {{define "gallery"}}
 <form id="select-form" hx-post="/folders/{{.FolderID}}/downloads" hx-target="#exports" hx-swap="outerHTML" class="row toolbar">
-  <button type="submit">Download selected</button>
-  <button type="submit" name="all" value="1">Download all</button>
-  <button type="button" data-select-all class="secondary">Select all loaded</button>
+  <button type="submit">{{t "gallery.download_selected"}}</button>
+  <button type="submit" name="all" value="1">{{t "gallery.download_all"}}</button>
+  <button type="button" data-select-all class="secondary">{{t "select_all_loaded"}}</button>
   <button type="button" class="danger" hx-post="/folders/{{.FolderID}}/images/trash{{.Filter.Query}}" hx-target="#gallery" hx-swap="innerHTML"
-          hx-confirm="Move {n} selected photos to the trash? You can restore them from the trash.">Move to trash</button>
-  <span id="match-count" class="muted small">{{if .Filter.F.Active}}{{.Matching}} of {{.Total}} photos match{{else}}{{.Total}} photos{{end}}</span>
+          hx-confirm="{{t "gallery.trash_confirm"}}">{{t "gallery.trash"}}</button>
+  <span id="match-count" class="muted small">{{if .Filter.F.Active}}{{t "gallery.count_match" (dict "Count" .Total "Matching" .Matching)}}{{else}}{{t "gallery.count" (dict "Count" .Total)}}{{end}}</span>
 </form>
 {{if and .Filter.F.Active .Matching}}
 <div class="row matching">
-  <span class="small">All {{.Matching}} matching photos:</span>
-  <button type="button" class="secondary" hx-post="/folders/{{.FolderID}}/downloads{{.Filter.Query}}&matching=1" hx-target="#exports" hx-swap="outerHTML">Download all matching</button>
+  <span class="small">{{t "gallery.all_matching" (dict "Count" .Matching)}}</span>
+  <button type="button" class="secondary" hx-post="/folders/{{.FolderID}}/downloads{{.Filter.Query}}&matching=1" hx-target="#exports" hx-swap="outerHTML">{{t "gallery.download_matching"}}</button>
   <button type="button" class="danger" hx-post="/folders/{{.FolderID}}/images/trash{{.Filter.Query}}&matching=1&expect={{.Matching}}" hx-target="#gallery" hx-swap="innerHTML"
-          hx-confirm="Move all {{.Matching}} photos matching this filter to the trash? You can restore them from the trash.">Move all matching to trash</button>
+          hx-confirm="{{t "gallery.trash_matching_confirm" (dict "Count" .Matching)}}">{{t "gallery.trash_matching"}}</button>
 </div>
 {{end}}
 <div id="grid" class="grid">
   {{template "image_grid" .Grid}}
 </div>
-{{if not .Grid.Images}}<p class="muted">{{if .Filter.F.Active}}No photos match this filter.{{else}}No photos yet.{{end}}</p>{{end}}
+{{if not .Grid.Images}}<p class="muted">{{if .Filter.F.Active}}{{t "gallery.none_match"}}{{else}}{{t "gallery.none"}}{{end}}</p>{{end}}
 {{end}}

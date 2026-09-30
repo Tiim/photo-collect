@@ -3,10 +3,10 @@
   {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
   {{range .Exports}}
   <div class="export">{{date .CreatedAt}} ·
-    {{if .Ready}}<a href="/downloads/{{.ID}}">Download ZIP ({{humanSize .SizeBytes.Int64}})</a> <span class="muted small">expires {{date .ExpiresAt}}</span>
-    {{else if eq .Status "failed"}}<span class="error">Failed</span>
-    {{else}}Preparing…{{end}}
+    {{if .Ready}}<a href="/downloads/{{.ID}}">{{t "exports.zip" (dict "Size" (humanSize .SizeBytes.Int64))}}</a> <span class="muted small">{{t "exports.expires" (dict "Date" (date .ExpiresAt))}}</span>
+    {{else if eq .Status "failed"}}<span class="error">{{t "exports.failed"}}</span>
+    {{else}}{{t "exports.preparing"}}{{end}}
   </div>
-  {{else}}<p class="muted">No downloads yet.</p>{{end}}
+  {{else}}<p class="muted">{{t "exports.none"}}</p>{{end}}
 </div>
 {{end}}

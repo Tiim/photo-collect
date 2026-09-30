@@ -93,7 +93,7 @@ func TestTrashHidesImagesEverywhere(t *testing.T) {
 	if strings.Contains(body, "tile-"+a) || strings.Contains(body, "tile-"+b) || !strings.Contains(body, "tile-"+c) {
 		t.Fatalf("refreshed grid wrong:\n%s", body)
 	}
-	if !strings.Contains(body, `hx-swap-oob="true"`) || !strings.Contains(body, "Trash (2)") || !strings.Contains(body, "1 images") {
+	if !strings.Contains(body, `hx-swap-oob="true"`) || !strings.Contains(body, "Trash (2)") || !strings.Contains(body, "1 image ·") {
 		t.Fatalf("counts not refreshed:\n%s", body)
 	}
 	if e.scalar("SELECT COUNT(*) FROM images WHERE deleted_at IS NOT NULL AND deleted_by = 'u1'") != 2 {

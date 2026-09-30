@@ -58,18 +58,18 @@ func (s *Server) trashGridView(ctx context.Context, folderID string, before int6
 }
 
 // selectedImages returns the image IDs posted by the grid, or writes a 400.
-func selectedImages(w http.ResponseWriter, r *http.Request) ([]string, bool) {
+func (s *Server) selectedImages(w http.ResponseWriter, r *http.Request) ([]string, bool) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
+		s.fail(w, r, http.StatusBadRequest, "err.bad_request")
 		return nil, false
 	}
 	ids := r.PostForm["image"]
 	if len(ids) == 0 {
-		http.Error(w, "Select at least one image", http.StatusBadRequest)
+		s.fail(w, r, http.StatusBadRequest, "err.select_one")
 		return nil, false
 	}
 	if len(ids) > library.MaxBatch {
-		http.Error(w, library.ErrTooMany.Error(), http.StatusBadRequest)
+		s.failErr(w, r, http.StatusBadRequest, library.ErrTooMany)
 		return nil, false
 	}
 	return ids, true
@@ -85,7 +85,7 @@ func (s *Server) imagesTrash(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	flt, ok := parseFilter(w, r)
+	flt, ok := s.parseFilter(w, r)
 	if !ok {
 		return
 	}
@@ -94,7 +94,7 @@ func (s *Server) imagesTrash(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if r.URL.Query().Get("matching") == "1" {
 		if !flt.Active() {
-			http.Error(w, "Choose a filter first", http.StatusBadRequest)
+			s.fail(w, r, http.StatusBadRequest, "err.filter_first")
 			return
 		}
 		ids, err := s.matchingIDs(r.Context(), f.ID, flt)
@@ -103,11 +103,11 @@ func (s *Server) imagesTrash(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(ids) == 0 {
-			http.Error(w, "No photos match the filter", http.StatusBadRequest)
+			s.fail(w, r, http.StatusBadRequest, "err.filter_none")
 			return
 		}
 		if expect, _ := strconv.Atoi(r.URL.Query().Get("expect")); expect != len(ids) {
-			http.Error(w, "The photos matching the filter have changed. Reload the page and try again.", http.StatusConflict)
+			s.fail(w, r, http.StatusConflict, "err.filter_changed")
 			return
 		}
 		n, err = s.library.TrashAll(r.Context(), f.ID, ids, userID)
@@ -116,7 +116,7 @@ func (s *Server) imagesTrash(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		ids, ok := selectedImages(w, r)
+		ids, ok := s.selectedImages(w, r)
 		if !ok {
 			return
 		}
@@ -194,7 +194,7 @@ func (s *Server) trashChange(purge bool) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		ids, ok := selectedImages(w, r)
+		ids, ok := s.selectedImages(w, r)
 		if !ok {
 			return
 		}

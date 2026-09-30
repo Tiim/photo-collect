@@ -16,11 +16,11 @@
   <a class="brand" href="/">Photo Collect</a>
   {{if .Session}}
   <nav>
-    <a href="/folders">{{call .T "nav.folders"}}</a>
+    <a href="/folders">{{t "nav.folders"}}</a>
     <span class="who">{{.Session.DisplayName}}</span>
     <form method="post" action="/auth/logout" class="inline">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <button type="submit" class="link">{{call .T "nav.sign_out"}}</button>
+      <button type="submit" class="link">{{t "nav.sign_out"}}</button>
     </form>
   </nav>
   {{end}}
@@ -28,9 +28,10 @@
 <main>
 {{template "content" .}}
 </main>
-<footer class="langs" aria-label="{{call .T "lang.switch"}}">
+<footer class="langs" aria-label="{{t "lang.switch"}}">
   {{range .Langs}}{{if .Current}}<strong lang="{{.Code}}">{{.Name}}</strong>{{else}}<a href="{{.URL}}" lang="{{.Code}}" hreflang="{{.Code}}">{{.Name}}</a>{{end}} {{end}}
 </footer>
 <div id="modal" class="modal" hidden></div>
+<script type="application/json" id="i18n">{{jsStrings}}</script>
 </body>
 </html>{{end}}

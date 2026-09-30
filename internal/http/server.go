@@ -44,7 +44,7 @@ type Server struct {
 	library   *library.Service
 	queue     *jobs.Queue
 	log       *slog.Logger
-	pages     map[string]*template.Template
+	pages     map[string]map[string]*template.Template // language -> page name -> templates
 	secure    bool
 	i18n      *i18n.Bundle
 
@@ -182,7 +182,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) serverError(w http.ResponseWriter, r *http.Request, err error) {
 	s.log.Error("request failed", "method", r.Method, "route", routeLabel(r), "err", err)
-	http.Error(w, "Something went wrong", http.StatusInternalServerError)
+	s.fail(w, r, http.StatusInternalServerError, "err.internal")
 }
 
 // notFoundOr responds 404 for sql.ErrNoRows and 500 otherwise.

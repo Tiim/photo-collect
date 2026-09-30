@@ -5,27 +5,27 @@
   {{template "folder_counts" .Counts}}
   <div class="head-actions">
     <button class="danger" hx-post="/folders/{{.Folder.ID}}/delete"
-            hx-confirm="Delete this folder and all of its photos? This cannot be undone.">Delete folder</button>
+            hx-confirm="{{t "folder.delete_confirm"}}">{{t "folder.delete"}}</button>
   </div>
 </div>
 
 <section class="panels">
   {{template "map_card" .Gallery.Map}}
-  <div class="panel"><h2>Upload link</h2>{{template "upload_link" .Link}}</div>
-  <div class="panel"><h2>Standard tags</h2>{{template "standard_tags" .Tags}}</div>
-  <div class="panel"><h2>Downloads</h2>{{template "exports" .Exports}}</div>
+  <div class="panel"><h2>{{t "folder.upload_link"}}</h2>{{template "upload_link" .Link}}</div>
+  <div class="panel"><h2>{{t "folder.standard_tags"}}</h2>{{template "standard_tags" .Tags}}</div>
+  <div class="panel"><h2>{{t "folder.downloads"}}</h2>{{template "exports" .Exports}}</div>
   {{if .Devices}}
   <div class="panel devices-card">
-    <h2>Camera clocks ({{len .Devices}})</h2>
+    <h2>{{t "folder.devices" (dict "N" (len .Devices))}}</h2>
     <ul class="devices">
       {{range .Devices}}
       <li>
         <strong>{{.Camera}}</strong> <span class="muted">· {{.Uploader}}</span>
-        <div class="small {{if not .Calibrated}}muted{{end}}">{{.Images}} photos · {{.Status}}</div>
+        <div class="small {{if not .Calibrated}}muted{{end}}">{{t "folder.device_line" (dict "Count" .Images "Status" .Status)}}</div>
       </li>
       {{end}}
     </ul>
-    <p class="muted small">Photos of the <a href="/" target="_blank" rel="noopener">clock page</a> correct the timestamps of all photos from the same camera. They are tagged <em>calibration</em> and left out of "Download all".</p>
+    <p class="muted small">{{th "folder.devices_hint"}}</p>
   </div>
   {{end}}
 </section>

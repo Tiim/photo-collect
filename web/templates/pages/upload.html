@@ -1,28 +1,29 @@
 {{define "content"}}
 {{with .Data}}
 <div class="narrow">
-<h1>{{call $.T "upload.title"}}</h1>
-<p>{{call $.TH "upload.folder" (dict "Name" .FolderName)}}</p>
+<h1>{{t "upload.title"}}</h1>
+<p>{{th "upload.folder" (dict "Name" .FolderName)}}</p>
 {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
 {{if .Nickname}}
-  <p>{{call $.TH "upload.uploading_as" (dict "Nickname" .Nickname)}}
-    <form method="post" action="/upload/{{.Token}}/nickname/clear" class="inline"><button class="link" type="submit">{{call $.T "upload.not_you"}}</button></form>
+  <p>{{th "upload.uploading_as" (dict "Nickname" .Nickname)}}
+    <form method="post" action="/upload/{{.Token}}/nickname/clear" class="inline"><button class="link" type="submit">{{t "upload.not_you"}}</button></form>
   </p>
   <div id="dropzone" class="dropzone" data-url="/upload/{{.Token}}/images" data-max-files="{{.MaxFiles}}">
-    <p>{{call $.T "upload.drop"}}</p>
-    <p class="muted">{{call $.T "upload.or"}}</p>
-    <label class="button">{{call $.T "upload.choose"}}<input id="file-input" type="file" multiple accept="image/*,.heic,.heif" hidden></label>
-    <p class="muted small">{{call $.T "upload.formats" (dict "MB" .MaxSizeMB)}}</p>
+    <p>{{t "upload.drop"}}</p>
+    <p class="muted">{{t "upload.or"}}</p>
+    <label class="button">{{t "upload.choose"}}<input id="file-input" type="file" multiple accept="image/*,.heic,.heif" hidden></label>
+    <p class="muted small">{{t "upload.formats" (dict "MB" .MaxSizeMB)}}</p>
+    <p class="muted small">{{t "upload.privacy"}}</p>
   </div>
-  <p class="muted small">{{call $.TH "upload.clock_hint"}}</p>
+  <p class="muted small">{{th "upload.clock_hint"}}</p>
   <ul id="upload-list" class="upload-list"></ul>
 {{else}}
   <form method="post" action="/upload/{{.Token}}/nickname" class="stack">
-    <label>{{call $.T "upload.nickname"}}
+    <label>{{t "upload.nickname"}}
       <input type="text" name="nickname" maxlength="40" required autofocus autocomplete="nickname">
     </label>
-    <p class="muted small">{{call $.T "upload.nickname_hint"}}</p>
-    <button type="submit">{{call $.T "upload.continue"}}</button>
+    <p class="muted small">{{t "upload.nickname_hint"}}</p>
+    <button type="submit">{{t "upload.continue"}}</button>
   </form>
 {{end}}
 </div>
