@@ -1,0 +1,18 @@
+{{define "content"}}
+{{with .Data}}
+<p><a href="/folders/{{.Folder.ID}}">← {{.Folder.Name}}</a></p>
+<h1>Trash {{template "trash_count" .Counts}}</h1>
+<p class="muted small">Trashed photos are hidden everywhere but keep using storage until they are deleted permanently. Deleting permanently cannot be undone.</p>
+
+<form id="trash-form" class="row toolbar">
+  <button type="button" hx-post="/folders/{{.Folder.ID}}/images/restore" hx-target="#trash-grid" hx-swap="innerHTML">Restore selected</button>
+  <button type="button" class="danger" hx-post="/folders/{{.Folder.ID}}/images/purge" hx-target="#trash-grid" hx-swap="innerHTML"
+          hx-confirm="Permanently delete {n} selected photos? This cannot be undone.">Delete permanently</button>
+  <button type="button" data-select-all class="secondary">Select all loaded</button>
+</form>
+
+<div id="trash-grid" class="grid">
+  {{template "trash_grid" .Grid}}
+</div>
+{{end}}
+{{end}}

@@ -1,26 +1,64 @@
 -- name: InsertImage :one
-INSERT INTO images (id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, device_key, exif_time)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO images (id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, device_key, exif_time, gps_lat, gps_lon, gps_attempted_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
+-- Trashed images (deleted_at IS NOT NULL) are invisible to every query below
+-- unless its name says otherwise (Trashed, Any, All).
+
 -- name: GetImage :one
+SELECT i.* FROM images i
+JOIN folders f ON f.id = i.folder_id
+WHERE i.id = ? AND f.deleted_at IS NULL AND i.deleted_at IS NULL;
+
+-- Includes trashed images (trash view thumbnails, background jobs).
+-- name: GetImageAny :one
 SELECT i.* FROM images i
 JOIN folders f ON f.id = i.folder_id
 WHERE i.id = ? AND f.deleted_at IS NULL;
 
 -- name: ListImagesInFolder :many
 SELECT * FROM images
-WHERE folder_id = ? AND seq < sqlc.arg(before_seq)
+WHERE folder_id = ? AND deleted_at IS NULL AND seq < sqlc.arg(before_seq)
+ORDER BY seq DESC
+LIMIT sqlc.arg(page_size);
+
+-- name: ListTrashedImagesInFolder :many
+SELECT * FROM images
+WHERE folder_id = ? AND deleted_at IS NOT NULL AND seq < sqlc.arg(before_seq)
 ORDER BY seq DESC
 LIMIT sqlc.arg(page_size);
 
 -- name: ListImagesByIDs :many
 SELECT * FROM images
-WHERE folder_id = ? AND id IN (sqlc.slice(image_ids))
+WHERE folder_id = ? AND deleted_at IS NULL AND id IN (sqlc.slice(image_ids))
 ORDER BY seq;
 
--- name: ListImageIDsInFolder :many
-SELECT id FROM images WHERE folder_id = ? ORDER BY seq;
+-- name: ListTrashedImagesByIDs :many
+SELECT * FROM images
+WHERE folder_id = ? AND deleted_at IS NOT NULL AND id IN (sqlc.slice(image_ids))
+ORDER BY seq;
+
+-- name: TrashImages :execrows
+UPDATE images SET deleted_at = sqlc.arg(deleted_at), deleted_by = sqlc.arg(deleted_by)
+WHERE folder_id = sqlc.arg(folder_id) AND deleted_at IS NULL AND id IN (sqlc.slice(image_ids));
+
+-- name: RestoreImages :execrows
+UPDATE images SET deleted_at = NULL, deleted_by = NULL
+WHERE folder_id = sqlc.arg(folder_id) AND deleted_at IS NOT NULL AND id IN (sqlc.slice(image_ids));
+
+-- name: CountTrashedImagesInFolder :one
+SELECT COUNT(*) FROM images WHERE folder_id = ? AND deleted_at IS NOT NULL;
+
+-- Every image row, trashed or not, of folders that are not being deleted.
+-- Used by the orphan sweeper.
+-- name: ListAllImageRefs :many
+SELECT i.id, i.folder_id FROM images i
+JOIN folders f ON f.id = i.folder_id
+WHERE f.deleted_at IS NULL;
+
+-- name: ListDeletedFolderIDs :many
+SELECT id FROM folders WHERE deleted_at IS NOT NULL;
 
 -- name: SetImageRating :execrows
 UPDATE images SET rating = ? WHERE id = ?;
@@ -47,11 +85,11 @@ UPDATE images SET phash_attempted_at = ? WHERE id = ?;
 UPDATE images SET derivative_version = derivative_version + 1 WHERE id = ?;
 
 -- name: ListAllImageHashesInFolder :many
-SELECT id, phash FROM images WHERE folder_id = ? AND phash IS NOT NULL;
+SELECT id, phash FROM images WHERE folder_id = ? AND phash IS NOT NULL AND deleted_at IS NULL;
 
 -- name: ListImagesMissingPHash :many
 SELECT i.id, i.folder_id FROM images i
-WHERE i.phash IS NULL AND i.phash_attempted_at IS NULL
+WHERE i.phash IS NULL AND i.phash_attempted_at IS NULL AND i.deleted_at IS NULL
   AND NOT EXISTS (
     SELECT 1 FROM jobs j
     WHERE j.type = 'derive_image' AND j.status IN ('pending', 'running')
@@ -64,7 +102,7 @@ DELETE FROM images WHERE id = ?;
 -- name: ListExportImages :many
 SELECT i.* FROM export_images ei
 JOIN images i ON i.id = ei.image_id
-WHERE ei.export_id = ?
+WHERE ei.export_id = ? AND i.deleted_at IS NULL
 ORDER BY i.seq;
 
 -- name: MarkImageScanned :exec
@@ -94,6 +132,6 @@ SELECT device_key, uploader_nickname,
        CAST(COALESCE(MIN(time_offset_seconds), 0) AS INTEGER) AS min_offset,
        CAST(COALESCE(MAX(time_offset_seconds), 0) AS INTEGER) AS max_offset
 FROM images
-WHERE folder_id = ? AND device_key IS NOT NULL
+WHERE folder_id = ? AND device_key IS NOT NULL AND deleted_at IS NULL
 GROUP BY device_key, uploader_nickname
 ORDER BY uploader_nickname, device_key;

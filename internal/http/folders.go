@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,12 +31,6 @@ func ratingOf(img sqlc.Image) int {
 		return int(img.Rating.Int64)
 	}
 	return 0
-}
-
-type GridView struct {
-	FolderID   string
-	Images     []TileView
-	NextBefore int64 // 0 when there are no more images
 }
 
 type LinkView struct {
@@ -71,8 +64,8 @@ type FolderPage struct {
 	Tags       StdTagsView
 	Link       LinkView
 	Exports    ExportsView
-	Grid       GridView
-	Count      int64
+	Gallery    GalleryView
+	Counts     FolderCounts
 	Devices    []DeviceRow
 	Duplicates DuplicatesView
 }
@@ -121,14 +114,18 @@ func (s *Server) folderShow(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	flt, ok := parseFilter(w, r)
+	if !ok {
+		return
+	}
 	ctx := r.Context()
 	p := FolderPage{Folder: f}
 	var err error
 	if p.Tags, err = s.stdTagsView(ctx, f.ID); err == nil {
 		if p.Link, err = s.linkView(ctx, f.ID); err == nil {
 			if p.Exports, err = s.exportsView(ctx, f.ID); err == nil {
-				if p.Grid, err = s.gridView(ctx, f.ID, math.MaxInt64); err == nil {
-					if p.Count, err = s.db.Q.CountImagesInFolder(ctx, f.ID); err == nil {
+				if p.Gallery, err = s.galleryView(ctx, f, flt); err == nil {
+					if p.Counts, err = s.folderCounts(ctx, f.ID, false); err == nil {
 						if p.Devices, err = s.devicesView(ctx, f.ID); err == nil {
 							p.Duplicates, err = s.duplicatesView(ctx, f.ID)
 						}
@@ -141,42 +138,8 @@ func (s *Server) folderShow(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
+	allowMapTiles(w) // the folder map loads tiles
 	s.page(w, r, http.StatusOK, "folder", f.Name, p)
-}
-
-func (s *Server) folderImages(w http.ResponseWriter, r *http.Request) {
-	f, ok := s.folder(w, r)
-	if !ok {
-		return
-	}
-	before, err := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
-	if err != nil || before <= 0 {
-		before = math.MaxInt64
-	}
-	g, err := s.gridView(r.Context(), f.ID, before)
-	if err != nil {
-		s.serverError(w, r, err)
-		return
-	}
-	s.fragment(w, r, "image_grid", g)
-}
-
-func (s *Server) gridView(ctx context.Context, folderID string, before int64) (GridView, error) {
-	imgs, err := s.db.Q.ListImagesInFolder(ctx, sqlc.ListImagesInFolderParams{
-		FolderID: folderID, BeforeSeq: before, PageSize: pageSize + 1,
-	})
-	if err != nil {
-		return GridView{}, err
-	}
-	g := GridView{FolderID: folderID}
-	if len(imgs) > pageSize {
-		imgs = imgs[:pageSize]
-		g.NextBefore = imgs[len(imgs)-1].Seq
-	}
-	for _, im := range imgs {
-		g.Images = append(g.Images, tile(im))
-	}
-	return g, nil
 }
 
 func (s *Server) folderDelete(w http.ResponseWriter, r *http.Request) {

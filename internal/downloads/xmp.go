@@ -17,6 +17,19 @@ type XMPData struct {
 	// wall-clock time. Zero (the default) writes nothing: the original's own
 	// EXIF time is already right or unknown.
 	Captured time.Time
+	// GPS position in decimal degrees, written when HasGPS is set.
+	HasGPS   bool
+	Lat, Lon float64
+}
+
+// gpsCoordinate formats a signed coordinate as the XMP "DDD,MM.mmmmmmN" form.
+func gpsCoordinate(v float64, pos, neg string) string {
+	ref := pos
+	if v < 0 {
+		v, ref = -v, neg
+	}
+	deg := int(v)
+	return strconv.Itoa(deg) + "," + strconv.FormatFloat((v-float64(deg))*60, 'f', 6, 64) + ref
 }
 
 // BuildXMP renders a standard XMP sidecar understood by Lightroom, darktable,
@@ -43,6 +56,10 @@ func BuildXMP(d XMPData) []byte {
 		ts := d.Captured.Format("2006-01-02T15:04:05")
 		b.WriteString("\n    xmp:CreateDate=\"" + ts + "\"")
 		b.WriteString("\n    exif:DateTimeOriginal=\"" + ts + "\"")
+	}
+	if d.HasGPS {
+		b.WriteString("\n    exif:GPSLatitude=\"" + gpsCoordinate(d.Lat, "N", "S") + "\"")
+		b.WriteString("\n    exif:GPSLongitude=\"" + gpsCoordinate(d.Lon, "E", "W") + "\"")
 	}
 	b.WriteString(">\n")
 	if len(d.Tags) > 0 {

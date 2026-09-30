@@ -1,6 +1,7 @@
 package jobs_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/tiim/photo-collect/internal/database"
 	"github.com/tiim/photo-collect/internal/images"
+	"github.com/tiim/photo-collect/internal/images/imagetest"
 	"github.com/tiim/photo-collect/internal/jobs"
 	"github.com/tiim/photo-collect/internal/storage"
 	"github.com/tiim/photo-collect/internal/storage/filesystem"
@@ -298,5 +300,82 @@ func TestDeferDoesNotConsumeAttempts(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatalf("job did not complete, %d calls", calls.Load())
+	}
+}
+
+// The GPS backfill looks at each existing image exactly once, whether or not it
+// finds a position, and skips images that already have a queued job.
+func TestExtractGPSBackfill(t *testing.T) {
+	db := open(t)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store, err := filesystem.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if _, err := db.Exec(`INSERT INTO folders (id, name) VALUES ('f1', 'F')`); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{
+		"geo":  imagetest.JPEG(16, 16, imagetest.Camera{Make: "Apple", HasGPS: true, Lat: 47.3769, Lon: 8.5417}),
+		"none": imagetest.PlainJPEG(16, 16),
+		"junk": []byte("not an image"),
+	}
+	for id, data := range files {
+		if _, err := db.Exec(`INSERT INTO images (id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname)
+			VALUES (?, 'f1', 'x.jpg', 'image/jpeg', 1, 1, 1, ?, 'n')`, id, id); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.Put(ctx, storage.OriginalKey("f1", id), bytes.NewReader(data), int64(len(data)), "image/jpeg"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	q := jobs.New(db, log)
+	(&jobs.Handlers{DB: db, Store: store, Processor: failingProcessor{}, Queue: q, Log: log}).Register(q)
+	missing := func() int {
+		ids, err := db.Q.ListImagesMissingGPS(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(ids)
+	}
+	if n := missing(); n != 3 {
+		t.Fatalf("missing = %d, want 3", n)
+	}
+	ids, _ := db.Q.ListImagesMissingGPS(ctx)
+	for _, id := range ids {
+		q.Enqueue(ctx, db.Q, jobs.TypeExtractGPS, jobs.ExtractGPSPayload{ImageID: id})
+	}
+	if n := missing(); n != 0 {
+		t.Fatalf("images with a queued job are still listed (%d)", n)
+	}
+	go q.Run(ctx, 2)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var done int
+		db.QueryRow("SELECT COUNT(*) FROM images WHERE gps_attempted_at IS NOT NULL").Scan(&done)
+		if done == 3 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("only %d images attempted", done)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	var lat, lon float64
+	if err := db.QueryRow("SELECT gps_lat, gps_lon FROM images WHERE id = 'geo'").Scan(&lat, &lon); err != nil || lat < 47.37 || lat > 47.38 || lon < 8.54 || lon > 8.55 {
+		t.Fatalf("geo position = %v, %v (%v)", lat, lon, err)
+	}
+	var n int
+	db.QueryRow("SELECT COUNT(*) FROM images WHERE gps_lat IS NOT NULL").Scan(&n)
+	if n != 1 {
+		t.Fatalf("%d images have a position, want 1", n)
+	}
+	// Finished: nothing to backfill on the next start.
+	time.Sleep(50 * time.Millisecond)
+	if n := missing(); n != 0 {
+		t.Fatalf("missing after backfill = %d", n)
 	}
 }

@@ -174,8 +174,9 @@ The service flags duplicate photos within a folder; it never deletes anything au
 - Comparison runs in a background job, debounced to a fixed delay after the folder's last upload
   or hash computation, so a burst of uploads triggers one scan rather than one per photo.
 - Only authenticated folder viewers/admins see flagged pairs and can resolve them (keep one and
-  delete the other, merging the deleted photo's tags and rating onto the kept one; or dismiss the
-  pair as not a duplicate). Anonymous uploaders never see any of this.
+  move the other to the trash, merging the trashed photo's tags and rating onto the kept one; or
+  dismiss the pair as not a duplicate). Pairs are hidden while either photo is trashed.
+  Anonymous uploaders never see any of this.
 - The similarity threshold is a fixed, conservative constant, not configurable per folder.
 
 ## 8. Generated images
@@ -344,6 +345,12 @@ Requirements:
     - Tags
     - Relevant image metadata
 
+### Filtering
+The folder grid can be filtered and sorted through query parameters: `tag` (repeatable, at most 10) with `tag_mode=all|any`, `rating_min`, `rating_max` (1-5), `uploader`, `from` / `to` (dates, on the corrected capture time), `has_gps=1`, `sort=uploaded|captured|rating` and `dir=asc|desc`. Invalid values are rejected with 400. Paging uses a keyset on the sort key and the upload sequence number. "Download all matching" and "Move all matching to trash" resolve the filter on the server; trashing all matches requires an active filter and the match count the user saw.
+
+### Locations
+The EXIF GPS position (range-checked, exact 0,0 ignored) is stored per image at upload; a background job fills it in for older images once. Positions are shown only to signed-in users, on a Leaflet map (vendored, standard OpenStreetMap tiles, opened on demand) in the image detail and as a folder map of the current filter (`GET /folders/{id}/map.json`, id and position only). `img-src` allows the tile host only on pages that can show a map. Derivatives contain no EXIF; the XMP sidecar in exports contains the position.
+
 Images should be visible even if thumbnail generation has not completed. A placeholder/loading state can be used until the derived image is available.
 
 The expected number of images is in the hundreds to several thousand, so pagination or incremental loading should be used rather than rendering thousands of images into one HTML response.
@@ -427,13 +434,27 @@ Deleting thousands of images must not require the HTTP request to synchronously 
 
 The purpose of background deletion is specifically to reduce storage costs and avoid long-running HTTP requests.
 
+### Photo trash and orphan cleanup
+
+- Any authenticated user can move photos of a folder to its trash (soft delete: `images.deleted_at`,
+  `images.deleted_by` = user id) and restore them. Trashed photos are excluded from the grid,
+  counts, exports, duplicate review, the pHash backfill and the image routes (404, except the
+  thumbnail shown in the trash view).
+- Purging is only possible from the trash. It deletes the image row (cascading to tags, duplicate
+  pairs and export links) and, in the same transaction, enqueues a retryable
+  `delete_image_objects` job for the stored objects.
+- There is no automatic expiry. Deleting a folder removes trashed photos too.
+- A `sweep_orphans` job (startup, then daily) deletes stored image objects with no image row and
+  older than 24 hours, and warns about image rows without an original. It refuses to run when the
+  candidates are 20 % or more of all objects and at least 100.
+
 ## 17. Background jobs
 
 The application requires background processing for at least:
 
 - Thumbnail generation.
 - Preview generation.
-- Folder/image storage deletion.
+- Folder/image storage deletion (including purged photos and the orphan sweep).
 - ZIP/XMP download generation.
 
 A durable SQLite-backed job queue is preferred.
@@ -582,6 +603,10 @@ Representative routes could include:
 /folders/new
 /folders/<id>
 /folders/<id>/delete
+/folders/<id>/trash
+/folders/<id>/images/trash
+/folders/<id>/images/restore
+/folders/<id>/images/purge
 
 /folders/<id>/upload-link
 /folders/<id>/upload-link/revoke

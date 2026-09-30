@@ -54,6 +54,17 @@ func (q *Queries) CompleteJob(ctx context.Context, arg CompleteJobParams) error 
 	return err
 }
 
+const countUnfinishedJobsByType = `-- name: CountUnfinishedJobsByType :one
+SELECT COUNT(*) FROM jobs WHERE type = ? AND status IN ('pending', 'running')
+`
+
+func (q *Queries) CountUnfinishedJobsByType(ctx context.Context, type_ string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countUnfinishedJobsByType, type_)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deferJob = `-- name: DeferJob :exec
 UPDATE jobs SET status = 'pending', run_at = ?, started_at = NULL, attempts = MAX(attempts - 1, 0) WHERE id = ?
 `

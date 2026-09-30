@@ -12,7 +12,7 @@ import (
 
 const addAllFolderImagesToExport = `-- name: AddAllFolderImagesToExport :exec
 INSERT INTO export_images (export_id, image_id)
-SELECT ?1, id FROM images WHERE folder_id = ?2 AND is_calibration = 0
+SELECT ?1, id FROM images WHERE folder_id = ?2 AND is_calibration = 0 AND deleted_at IS NULL
 `
 
 type AddAllFolderImagesToExportParams struct {
@@ -248,7 +248,7 @@ func (q *Queries) MarkExportRunning(ctx context.Context, id string) error {
 
 const sumExportImageBytes = `-- name: SumExportImageBytes :one
 SELECT CAST(COALESCE(SUM(i.size_bytes), 0) AS INTEGER) FROM export_images ei
-JOIN images i ON i.id = ei.image_id WHERE ei.export_id = ?
+JOIN images i ON i.id = ei.image_id WHERE ei.export_id = ? AND i.deleted_at IS NULL
 `
 
 func (q *Queries) SumExportImageBytes(ctx context.Context, exportID string) (int64, error) {

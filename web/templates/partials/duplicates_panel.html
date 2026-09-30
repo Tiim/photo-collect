@@ -11,7 +11,7 @@
       </a>
       <span class="muted small" title="{{.AFilename}}">{{.AFilename}}</span>
       <button hx-post="/duplicates/{{.ID}}/resolve" hx-vals='{"keep":"{{.ImageIDA}}"}' hx-target="#duplicates-{{$folderID}}" hx-swap="outerHTML"
-              hx-confirm="Keep this photo and delete the other one? Its tags and rating will be merged onto this one.">Keep this one</button>
+              hx-confirm="Keep this photo and move the other one to the trash? Its tags and rating will be merged onto this one.">Keep this one</button>
     </div>
     <div class="dup-side">
       <a href="/images/{{.ImageIDB}}" hx-get="/images/{{.ImageIDB}}" hx-target="#modal" hx-swap="innerHTML">
@@ -19,7 +19,7 @@
       </a>
       <span class="muted small" title="{{.BFilename}}">{{.BFilename}}</span>
       <button hx-post="/duplicates/{{.ID}}/resolve" hx-vals='{"keep":"{{.ImageIDB}}"}' hx-target="#duplicates-{{$folderID}}" hx-swap="outerHTML"
-              hx-confirm="Keep this photo and delete the other one? Its tags and rating will be merged onto this one.">Keep this one</button>
+              hx-confirm="Keep this photo and move the other one to the trash? Its tags and rating will be merged onto this one.">Keep this one</button>
     </div>
     <div class="dup-meta">
       <span class="muted small">Similar image (distance {{.Distance}})</span>

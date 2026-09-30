@@ -55,7 +55,22 @@ func (s *Server) exportCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var ids []string
-	if r.PostFormValue("all") != "1" {
+	if r.URL.Query().Get("matching") == "1" {
+		// Everything that matches the filter in the query string, resolved now.
+		flt, ok := parseFilter(w, r)
+		if !ok {
+			return
+		}
+		var err error
+		if ids, err = s.matchingIDs(r.Context(), f.ID, flt); err != nil {
+			s.serverError(w, r, err)
+			return
+		}
+		if len(ids) == 0 {
+			http.Error(w, "No photos match the filter", http.StatusBadRequest)
+			return
+		}
+	} else if r.PostFormValue("all") != "1" {
 		ids = r.PostForm["image"]
 		if len(ids) == 0 {
 			http.Error(w, "Select at least one image", http.StatusBadRequest)

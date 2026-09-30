@@ -69,7 +69,7 @@ func TestSpecialCharsAndUnknownSize(t *testing.T) {
 		t.Fatal("content mismatch")
 	}
 	keys, err := s.List(ctx, "folders/f 1/")
-	if err != nil || len(keys) != 1 || keys[0] != key {
+	if err != nil || len(keys) != 1 || keys[0].Key != key {
 		t.Fatalf("list = %v, %v", keys, err)
 	}
 }

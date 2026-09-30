@@ -1,0 +1,8 @@
+Vendored map libraries (no CDN: the content security policy only allows 'self' scripts).
+
+leaflet                 1.9.4   https://github.com/Leaflet/Leaflet          BSD-2-Clause  (LICENSE-leaflet)
+leaflet.markercluster   1.5.3   https://github.com/Leaflet/Leaflet.markercluster  MIT     (LICENSE-markercluster)
+
+Files are the unmodified dist/ files of the npm packages (`npm pack leaflet@1.9.4 leaflet.markercluster@1.5.3`),
+except that the trailing sourceMappingURL comments were removed. Marker images are in images/.
+To upgrade: replace the files, update this note, and check the map pages in the browser.

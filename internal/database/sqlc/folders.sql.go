@@ -10,10 +10,24 @@ import (
 	"database/sql"
 )
 
-const countImagesInFolder = `-- name: CountImagesInFolder :one
+const countAllImagesInFolder = `-- name: CountAllImagesInFolder :one
 SELECT COUNT(*) FROM images WHERE folder_id = ?
 `
 
+// All rows including the trash; trashed photos still occupy storage, so this
+// is what the per-folder capacity limit counts.
+func (q *Queries) CountAllImagesInFolder(ctx context.Context, folderID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countAllImagesInFolder, folderID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countImagesInFolder = `-- name: CountImagesInFolder :one
+SELECT COUNT(*) FROM images WHERE folder_id = ? AND deleted_at IS NULL
+`
+
+// Visible (not trashed) images, for display.
 func (q *Queries) CountImagesInFolder(ctx context.Context, folderID string) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countImagesInFolder, folderID)
 	var count int64
@@ -89,7 +103,7 @@ func (q *Queries) HardDeleteFolder(ctx context.Context, id string) error {
 
 const listFolders = `-- name: ListFolders :many
 SELECT f.id, f.name, f.created_at,
-       (SELECT COUNT(*) FROM images i WHERE i.folder_id = f.id) AS image_count
+       (SELECT COUNT(*) FROM images i WHERE i.folder_id = f.id AND i.deleted_at IS NULL) AS image_count
 FROM folders f
 WHERE f.deleted_at IS NULL
 ORDER BY f.created_at DESC, f.id

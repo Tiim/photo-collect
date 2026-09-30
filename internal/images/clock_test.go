@@ -3,6 +3,7 @@ package images_test
 import (
 	"bytes"
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -91,5 +92,41 @@ func TestScanClock(t *testing.T) {
 	got, err = p.ScanClock(context.Background(), bytes.NewReader(imagetest.PlainJPEG(200, 200)), "image/jpeg")
 	if err != nil || got != nil {
 		t.Fatalf("plain image: scan = %+v, %v", got, err)
+	}
+}
+
+func TestReadMetaGPS(t *testing.T) {
+	cases := []struct {
+		name     string
+		lat, lon float64
+		want     bool
+	}{
+		{"north east", 48.858370, 2.294481, true},
+		{"south west", -33.856784, -151.215297, true}, // hemisphere refs applied
+		{"null island is missing", 0, 0, false},
+	}
+	for _, c := range cases {
+		data := imagetest.JPEG(32, 32, imagetest.Camera{Make: "Apple", HasGPS: true, Lat: c.lat, Lon: c.lon})
+		m := images.ReadMeta(bytes.NewReader(data))
+		if m.HasGPS != c.want {
+			t.Fatalf("%s: HasGPS = %v, want %v (%+v)", c.name, m.HasGPS, c.want, m)
+		}
+		if c.want && (math.Abs(m.Lat-c.lat) > 1e-4 || math.Abs(m.Lon-c.lon) > 1e-4) {
+			t.Errorf("%s: position = %v,%v, want %v,%v", c.name, m.Lat, m.Lon, c.lat, c.lon)
+		}
+	}
+	if m := images.ReadMeta(bytes.NewReader(imagetest.JPEG(32, 32, imagetest.Camera{Make: "Apple"}))); m.HasGPS {
+		t.Errorf("image without GPS reports %+v", m)
+	}
+}
+
+func TestValidGPS(t *testing.T) {
+	for _, c := range []struct {
+		lat, lon float64
+		want     bool
+	}{{0, 0, false}, {90, 180, true}, {-90, -180, true}, {90.1, 0, false}, {0, 180.1, false}, {0, 5, true}, {math.NaN(), 1, false}} {
+		if got := images.ValidGPS(c.lat, c.lon); got != c.want {
+			t.Errorf("ValidGPS(%v,%v) = %v", c.lat, c.lon, got)
+		}
 	}
 }
