@@ -65,7 +65,7 @@ automatically.
 - Tests: crafted JPEG/PNG headers declaring 60000x60000 in a few hundred bytes are rejected by
   `Inspect` and never reach `Decode`; a normal image passes; boundary value.
 
-### 1.3 Backfill loop and derivative ETag (item 5)
+### 1.3 Backfill loop and derivative ETag (item 5) — DONE
 - **Backfill**: `backfillPHashes` re-enqueues every image with `phash IS NULL` on each start, so
   permanently undecodable images loop forever.
   - Migration `0004`: `images.phash_attempted_at TEXT NULL`.
@@ -80,7 +80,7 @@ automatically.
 - Tests: backfill enqueues once, then never again for a failing image; ETag changes after
   re-derivation.
 
-**Stage 1 exit**: CI green on PRs, oversize images rejected, no restart-time job storm.
+**Stage 1 exit** (all steps done): CI green on push, oversize images rejected, no restart-time job storm.
 
 ---
 

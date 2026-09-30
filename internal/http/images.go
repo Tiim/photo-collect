@@ -91,10 +91,15 @@ func (s *Server) imageFile(kind string) http.HandlerFunc {
 			}
 			key, contentType = storage.ThumbnailKey(img.FolderID, img.ID), "image/jpeg"
 		}
+		// Originals are immutable; derivatives can be regenerated, so their
+		// ETag carries the derivative version.
 		etag := fmt.Sprintf(`"%s-%s"`, img.Sha256[:16], kind)
+		if kind != "original" {
+			etag = fmt.Sprintf(`"%s-%s-%d"`, img.Sha256[:16], kind, img.DerivativeVersion)
+		}
 		w.Header().Set("ETag", etag)
 		w.Header().Set("Cache-Control", "private, max-age=3600")
-		if match := r.Header.Get("If-None-Match"); match == etag {
+		if etagMatches(r.Header.Values("If-None-Match"), etag) {
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
@@ -124,6 +129,20 @@ func (s *Server) imageFile(kind string) http.HandlerFunc {
 		}
 		_, _ = io.Copy(w, rc)
 	}
+}
+
+// etagMatches implements the weak comparison of If-None-Match: the header may
+// be a comma-separated list, contain weak ("W/") validators or be "*".
+func etagMatches(headers []string, etag string) bool {
+	for _, h := range headers {
+		for _, v := range strings.Split(h, ",") {
+			v = strings.TrimPrefix(strings.TrimSpace(v), "W/")
+			if v == "*" || v == etag {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // asciiName gives a header-safe fallback filename.

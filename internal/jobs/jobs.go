@@ -59,6 +59,19 @@ const (
 	duplicateScanDebounce = 30 * time.Second
 )
 
+// Permanent wraps err so the queue fails the job at once instead of retrying.
+func Permanent(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &permanentError{err}
+}
+
+type permanentError struct{ err error }
+
+func (e *permanentError) Error() string { return e.err.Error() }
+func (e *permanentError) Unwrap() error { return e.err }
+
 // Handler processes a job. It must be idempotent: jobs may run more than once.
 type Handler func(ctx context.Context, payload json.RawMessage) error
 
@@ -195,7 +208,7 @@ func (q *Queue) run(ctx context.Context, job sqlc.Job) {
 	case ctx.Err() != nil:
 		// Shutdown interrupted the job; put it back without counting the attempt as a failure.
 		_ = q.db.Q.RetryJobLater(dbctx, sqlc.RetryJobLaterParams{RunAt: now, Error: sql.NullString{String: "interrupted by shutdown", Valid: true}, ID: job.ID})
-	case job.Attempts >= maxAttempts:
+	case job.Attempts >= maxAttempts || isPermanent(err):
 		log.Error("job failed permanently", "err", err)
 		if e := q.db.Q.FailJob(dbctx, sqlc.FailJobParams{FinishedAt: sql.NullString{String: now, Valid: true}, Error: sql.NullString{String: err.Error(), Valid: true}, ID: job.ID}); e != nil {
 			log.Error("mark job failed", "err", e)
@@ -207,6 +220,11 @@ func (q *Queue) run(ctx context.Context, job sqlc.Job) {
 			log.Error("reschedule job", "err", e)
 		}
 	}
+}
+
+func isPermanent(err error) bool {
+	var p *permanentError
+	return errors.As(err, &p)
 }
 
 func safeCall(ctx context.Context, h Handler, payload json.RawMessage) (err error) {

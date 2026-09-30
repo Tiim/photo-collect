@@ -11,6 +11,7 @@ import (
 	"math/bits"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/tiim/photo-collect/internal/database"
 	"github.com/tiim/photo-collect/internal/database/sqlc"
@@ -58,7 +59,17 @@ func (h *Handlers) deriveImage(ctx context.Context, raw json.RawMessage) error {
 	d, err := h.Processor.Derive(ctx, rc, img.MimeType)
 	if err != nil {
 		h.Log.Error("image processing failed", "image_id", img.ID, "err", err)
-		return err
+		if ctx.Err() != nil {
+			return err
+		}
+		// The original is unreadable as an image; retrying cannot help and the
+		// pHash backfill must not enqueue it again.
+		if e := h.DB.Q.MarkPHashAttempted(ctx, sqlc.MarkPHashAttemptedParams{
+			PhashAttemptedAt: sql.NullString{String: database.Time(time.Now()), Valid: true}, ID: img.ID,
+		}); e != nil {
+			return e
+		}
+		return Permanent(err)
 	}
 
 	if err := h.Store.Put(ctx, storage.PreviewKey(img.FolderID, img.ID), bytes.NewReader(d.Preview), int64(len(d.Preview)), "image/jpeg"); err != nil {
@@ -73,12 +84,16 @@ func (h *Handlers) deriveImage(ctx context.Context, raw json.RawMessage) error {
 	if err := h.DB.Q.MarkThumbnailReady(ctx, img.ID); err != nil {
 		return err
 	}
+	if err := h.DB.Q.BumpDerivativeVersion(ctx, img.ID); err != nil {
+		return err
+	}
 
+	attempted := sql.NullString{String: database.Time(time.Now()), Valid: true}
 	if !d.PHashOK {
-		return nil
+		return h.DB.Q.MarkPHashAttempted(ctx, sqlc.MarkPHashAttemptedParams{PhashAttemptedAt: attempted, ID: img.ID})
 	}
 	if err := h.DB.Q.SetImagePHash(ctx, sqlc.SetImagePHashParams{
-		Phash: sql.NullInt64{Int64: int64(d.PHash), Valid: true}, ID: img.ID,
+		Phash: sql.NullInt64{Int64: int64(d.PHash), Valid: true}, PhashAttemptedAt: attempted, ID: img.ID,
 	}); err != nil {
 		return err
 	}

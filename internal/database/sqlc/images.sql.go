@@ -11,8 +11,17 @@ import (
 	"strings"
 )
 
+const bumpDerivativeVersion = `-- name: BumpDerivativeVersion :exec
+UPDATE images SET derivative_version = derivative_version + 1 WHERE id = ?
+`
+
+func (q *Queries) BumpDerivativeVersion(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, bumpDerivativeVersion, id)
+	return err
+}
+
 const getImage = `-- name: GetImage :one
-SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds, i.phash FROM images i
+SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds, i.phash, i.phash_attempted_at, i.derivative_version FROM images i
 JOIN folders f ON f.id = i.folder_id
 WHERE i.id = ? AND f.deleted_at IS NULL
 `
@@ -42,12 +51,14 @@ func (q *Queries) GetImage(ctx context.Context, id string) (Image, error) {
 		&i.CalibRefTime,
 		&i.TimeOffsetSeconds,
 		&i.Phash,
+		&i.PhashAttemptedAt,
+		&i.DerivativeVersion,
 	)
 	return i, err
 }
 
 const getImageBySha256InFolder = `-- name: GetImageBySha256InFolder :one
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash FROM images WHERE folder_id = ? AND sha256 = ?
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version FROM images WHERE folder_id = ? AND sha256 = ?
 `
 
 type GetImageBySha256InFolderParams struct {
@@ -80,12 +91,14 @@ func (q *Queries) GetImageBySha256InFolder(ctx context.Context, arg GetImageBySh
 		&i.CalibRefTime,
 		&i.TimeOffsetSeconds,
 		&i.Phash,
+		&i.PhashAttemptedAt,
+		&i.DerivativeVersion,
 	)
 	return i, err
 }
 
 const getImageUnchecked = `-- name: GetImageUnchecked :one
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash FROM images WHERE id = ?
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version FROM images WHERE id = ?
 `
 
 func (q *Queries) GetImageUnchecked(ctx context.Context, id string) (Image, error) {
@@ -113,6 +126,8 @@ func (q *Queries) GetImageUnchecked(ctx context.Context, id string) (Image, erro
 		&i.CalibRefTime,
 		&i.TimeOffsetSeconds,
 		&i.Phash,
+		&i.PhashAttemptedAt,
+		&i.DerivativeVersion,
 	)
 	return i, err
 }
@@ -132,7 +147,7 @@ func (q *Queries) HardDeleteImage(ctx context.Context, id string) (int64, error)
 const insertImage = `-- name: InsertImage :one
 INSERT INTO images (id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, device_key, exif_time)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash
+RETURNING seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version
 `
 
 type InsertImageParams struct {
@@ -186,6 +201,8 @@ func (q *Queries) InsertImage(ctx context.Context, arg InsertImageParams) (Image
 		&i.CalibRefTime,
 		&i.TimeOffsetSeconds,
 		&i.Phash,
+		&i.PhashAttemptedAt,
+		&i.DerivativeVersion,
 	)
 	return i, err
 }
@@ -223,7 +240,7 @@ func (q *Queries) ListAllImageHashesInFolder(ctx context.Context, folderID strin
 }
 
 const listExportImages = `-- name: ListExportImages :many
-SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds, i.phash FROM export_images ei
+SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds, i.phash, i.phash_attempted_at, i.derivative_version FROM export_images ei
 JOIN images i ON i.id = ei.image_id
 WHERE ei.export_id = ?
 ORDER BY i.seq
@@ -260,6 +277,8 @@ func (q *Queries) ListExportImages(ctx context.Context, exportID string) ([]Imag
 			&i.CalibRefTime,
 			&i.TimeOffsetSeconds,
 			&i.Phash,
+			&i.PhashAttemptedAt,
+			&i.DerivativeVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -356,7 +375,7 @@ func (q *Queries) ListImageIDsInFolder(ctx context.Context, folderID string) ([]
 }
 
 const listImagesByIDs = `-- name: ListImagesByIDs :many
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash FROM images
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version FROM images
 WHERE folder_id = ? AND id IN (/*SLICE:image_ids*/?)
 ORDER BY seq
 `
@@ -408,6 +427,8 @@ func (q *Queries) ListImagesByIDs(ctx context.Context, arg ListImagesByIDsParams
 			&i.CalibRefTime,
 			&i.TimeOffsetSeconds,
 			&i.Phash,
+			&i.PhashAttemptedAt,
+			&i.DerivativeVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -423,7 +444,7 @@ func (q *Queries) ListImagesByIDs(ctx context.Context, arg ListImagesByIDsParams
 }
 
 const listImagesInFolder = `-- name: ListImagesInFolder :many
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash FROM images
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version FROM images
 WHERE folder_id = ? AND seq < ?2
 ORDER BY seq DESC
 LIMIT ?3
@@ -466,6 +487,8 @@ func (q *Queries) ListImagesInFolder(ctx context.Context, arg ListImagesInFolder
 			&i.CalibRefTime,
 			&i.TimeOffsetSeconds,
 			&i.Phash,
+			&i.PhashAttemptedAt,
+			&i.DerivativeVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -481,7 +504,13 @@ func (q *Queries) ListImagesInFolder(ctx context.Context, arg ListImagesInFolder
 }
 
 const listImagesMissingPHash = `-- name: ListImagesMissingPHash :many
-SELECT id, folder_id FROM images WHERE phash IS NULL
+SELECT i.id, i.folder_id FROM images i
+WHERE i.phash IS NULL AND i.phash_attempted_at IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM jobs j
+    WHERE j.type = 'derive_image' AND j.status IN ('pending', 'running')
+      AND json_extract(j.payload, '$.image_id') = i.id
+  )
 `
 
 type ListImagesMissingPHashRow struct {
@@ -518,6 +547,20 @@ UPDATE images SET qr_scanned = 1 WHERE id = ?
 
 func (q *Queries) MarkImageScanned(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, markImageScanned, id)
+	return err
+}
+
+const markPHashAttempted = `-- name: MarkPHashAttempted :exec
+UPDATE images SET phash_attempted_at = ? WHERE id = ?
+`
+
+type MarkPHashAttemptedParams struct {
+	PhashAttemptedAt sql.NullString
+	ID               string
+}
+
+func (q *Queries) MarkPHashAttempted(ctx context.Context, arg MarkPHashAttemptedParams) error {
+	_, err := q.db.ExecContext(ctx, markPHashAttempted, arg.PhashAttemptedAt, arg.ID)
 	return err
 }
 
@@ -578,16 +621,17 @@ func (q *Queries) SetImageCalibration(ctx context.Context, arg SetImageCalibrati
 }
 
 const setImagePHash = `-- name: SetImagePHash :exec
-UPDATE images SET phash = ? WHERE id = ?
+UPDATE images SET phash = ?, phash_attempted_at = ? WHERE id = ?
 `
 
 type SetImagePHashParams struct {
-	Phash sql.NullInt64
-	ID    string
+	Phash            sql.NullInt64
+	PhashAttemptedAt sql.NullString
+	ID               string
 }
 
 func (q *Queries) SetImagePHash(ctx context.Context, arg SetImagePHashParams) error {
-	_, err := q.db.ExecContext(ctx, setImagePHash, arg.Phash, arg.ID)
+	_, err := q.db.ExecContext(ctx, setImagePHash, arg.Phash, arg.PhashAttemptedAt, arg.ID)
 	return err
 }
 

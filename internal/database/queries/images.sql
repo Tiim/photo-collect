@@ -38,13 +38,25 @@ SELECT * FROM images WHERE id = ?;
 SELECT * FROM images WHERE folder_id = ? AND sha256 = ?;
 
 -- name: SetImagePHash :exec
-UPDATE images SET phash = ? WHERE id = ?;
+UPDATE images SET phash = ?, phash_attempted_at = ? WHERE id = ?;
+
+-- name: MarkPHashAttempted :exec
+UPDATE images SET phash_attempted_at = ? WHERE id = ?;
+
+-- name: BumpDerivativeVersion :exec
+UPDATE images SET derivative_version = derivative_version + 1 WHERE id = ?;
 
 -- name: ListAllImageHashesInFolder :many
 SELECT id, phash FROM images WHERE folder_id = ? AND phash IS NOT NULL;
 
 -- name: ListImagesMissingPHash :many
-SELECT id, folder_id FROM images WHERE phash IS NULL;
+SELECT i.id, i.folder_id FROM images i
+WHERE i.phash IS NULL AND i.phash_attempted_at IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM jobs j
+    WHERE j.type = 'derive_image' AND j.status IN ('pending', 'running')
+      AND json_extract(j.payload, '$.image_id') = i.id
+  );
 
 -- name: HardDeleteImage :execrows
 DELETE FROM images WHERE id = ?;
