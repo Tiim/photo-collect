@@ -29,6 +29,14 @@ type MapView struct {
 	Lat, Lon float64
 }
 
+// Coords formats the position for display.
+func (m MapView) Coords() string { return fmt.Sprintf("%.5f, %.5f", m.Lat, m.Lon) }
+
+// OSMURL links to the position on openstreetmap.org.
+func (m MapView) OSMURL() string {
+	return fmt.Sprintf("https://www.openstreetmap.org/?mlat=%.6f&mlon=%.6f#map=16/%.6f/%.6f", m.Lat, m.Lon, m.Lat, m.Lon)
+}
+
 type TagsView struct {
 	ImageID string
 	Tags    []sqlc.Tag
@@ -137,7 +145,7 @@ func (s *Server) imageFile(kind string) http.HandlerFunc {
 		}
 		if err != nil {
 			s.log.Error("storage read failed", "key", key, "err", err)
-			http.Error(w, "Storage unavailable", http.StatusBadGateway)
+			s.fail(w, r, http.StatusBadGateway, "err.storage")
 			return
 		}
 		defer rc.Close()
@@ -188,7 +196,7 @@ func (s *Server) imageRate(w http.ResponseWriter, r *http.Request) {
 	}
 	v, err := strconv.Atoi(r.PostFormValue("rating"))
 	if err != nil || v < 0 || v > 5 {
-		http.Error(w, "Rating must be between 0 and 5", http.StatusBadRequest)
+		s.fail(w, r, http.StatusBadRequest, "err.rating_range")
 		return
 	}
 	rating := sql.NullInt64{Int64: int64(v), Valid: v > 0}
@@ -216,7 +224,7 @@ func (s *Server) imageTagAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	name, err := domain.NormalizeTag(r.PostFormValue("name"))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.failErr(w, r, http.StatusBadRequest, err)
 		return
 	}
 	err = s.db.InTx(r.Context(), func(q *sqlc.Queries) error {

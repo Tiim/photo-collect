@@ -84,7 +84,7 @@ func (s *Server) foldersList(w http.ResponseWriter, r *http.Request) {
 func (s *Server) folderCreate(w http.ResponseWriter, r *http.Request) {
 	name := strings.Join(strings.Fields(r.PostFormValue("name")), " ")
 	if name == "" || len([]rune(name)) > 100 {
-		http.Error(w, "Folder name must be between 1 and 100 characters", http.StatusBadRequest)
+		s.fail(w, r, http.StatusBadRequest, "err.folder_name")
 		return
 	}
 	sess := sessionFrom(r.Context())
@@ -114,7 +114,7 @@ func (s *Server) folderShow(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	flt, ok := parseFilter(w, r)
+	flt, ok := s.parseFilter(w, r)
 	if !ok {
 		return
 	}
@@ -126,7 +126,7 @@ func (s *Server) folderShow(w http.ResponseWriter, r *http.Request) {
 			if p.Exports, err = s.exportsView(ctx, f.ID); err == nil {
 				if p.Gallery, err = s.galleryView(ctx, f, flt); err == nil {
 					if p.Counts, err = s.folderCounts(ctx, f.ID, false); err == nil {
-						if p.Devices, err = s.devicesView(ctx, f.ID); err == nil {
+						if p.Devices, err = s.devicesView(ctx, s.translator(r), f.ID); err == nil {
 							p.Duplicates, err = s.duplicatesView(ctx, f.ID)
 						}
 					}
@@ -185,7 +185,7 @@ func (s *Server) standardTagAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	name, err := domain.NormalizeTag(r.PostFormValue("name"))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.failErr(w, r, http.StatusBadRequest, err)
 		return
 	}
 	err = s.db.InTx(r.Context(), func(q *sqlc.Queries) error {

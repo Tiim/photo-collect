@@ -99,7 +99,7 @@ func (s *Server) duplicateResolve(w http.ResponseWriter, r *http.Request) {
 	case d.ImageIDB:
 		del = d.ImageIDA
 	default:
-		http.Error(w, "keep must be one of the pair's images", http.StatusBadRequest)
+		s.fail(w, r, http.StatusBadRequest, "err.keep_pair")
 		return
 	}
 

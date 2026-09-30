@@ -2,6 +2,16 @@
   'use strict';
 
   // ---- modal (image detail) ----
+  // Strings come from the server as a JSON block (see base.html), in the page
+  // language; the English text is only a fallback. "{name}" marks a value.
+  var strings = {};
+  try { strings = JSON.parse(document.getElementById('i18n').textContent); } catch (e) { /* fallbacks */ }
+  function tr(key, fallback, vars) {
+    var s = strings[key] || fallback;
+    if (vars) { Object.keys(vars).forEach(function (k) { s = s.split('{' + k + '}').join(vars[k]); }); }
+    return s;
+  }
+
   var modal = document.getElementById('modal');
   function closeModal() { if (modal) { modal.hidden = true; modal.innerHTML = ''; } }
   document.addEventListener('htmx:afterSwap', function (e) {
@@ -16,8 +26,9 @@
       if (input) {
         input.select();
         if (navigator.clipboard) { navigator.clipboard.writeText(input.value); } else { document.execCommand('copy'); }
-        copy.textContent = 'Copied';
-        setTimeout(function () { copy.textContent = 'Copy'; }, 1500);
+        var label = copy.textContent;
+        copy.textContent = tr('js.copied', 'Copied');
+        setTimeout(function () { copy.textContent = label; }, 1500);
       }
     }
     if (t.closest && t.closest('[data-select-all]')) {
@@ -72,7 +83,7 @@
       bar.max = 100; bar.value = 0;
       var status = document.createElement('div');
       status.className = 'small muted';
-      status.textContent = 'Waiting…';
+      status.textContent = tr('js.waiting', 'Waiting…');
       li.appendChild(label); li.appendChild(bar); li.appendChild(status);
       list.appendChild(li);
       queue.push({ file: file, bar: bar, status: status });
@@ -108,7 +119,7 @@
   function retryLater(item, xhr) {
     item.attempts = (item.attempts || 0) + 1;
     if (item.attempts > MAX_RETRIES) {
-      finish(item, false, 'The server is busy, please try again later');
+      finish(item, false, tr('js.busy_give_up', 'The server is busy, please try again later'));
       return;
     }
     var delay = retryDelay(xhr.getResponseHeader('Retry-After'), item.attempts);
@@ -116,29 +127,29 @@
     pausedUntil = Math.max(pausedUntil, Date.now() + delay * 1000);
     item.bar.value = 0;
     item.status.className = 'small muted';
-    item.status.textContent = 'Server busy, retrying in ' + Math.ceil(delay) + ' s…';
+    item.status.textContent = tr('js.busy_retry', 'Server busy, retrying in {n} s…', { n: Math.ceil(delay) });
     queue.unshift(item);
     pump();
   }
 
   function send(item) {
     active++;
-    item.status.textContent = 'Uploading…';
+    item.status.textContent = tr('js.uploading', 'Uploading…');
     var xhr = new XMLHttpRequest();
     xhr.open('POST', url);
     xhr.upload.onprogress = function (e) {
       if (e.lengthComputable) { item.bar.value = (e.loaded / e.total) * 100; }
     };
-    xhr.onerror = function () { finish(item, false, 'Network error'); };
+    xhr.onerror = function () { finish(item, false, tr('js.network_error', 'Network error')); };
     xhr.onload = function () {
       if (xhr.status === 429 || xhr.status === 503) { retryLater(item, xhr); return; }
       var res = null;
       try { res = JSON.parse(xhr.responseText).results[0]; } catch (e) { /* not JSON */ }
-      if (res && res.ok) { finish(item, true, 'Uploaded'); }
+      if (res && res.ok) { finish(item, true, tr('js.uploaded', 'Uploaded')); }
       else if (res && res.error) { finish(item, false, res.error); }
-      else if (xhr.status === 410) { finish(item, false, 'This upload link has expired'); }
-      else if (xhr.status === 413) { finish(item, false, 'File is too large'); }
-      else { finish(item, false, 'Upload failed (' + xhr.status + ')'); }
+      else if (xhr.status === 410) { finish(item, false, tr('js.expired', 'This upload link has expired')); }
+      else if (xhr.status === 413) { finish(item, false, tr('js.too_large', 'File is too large')); }
+      else { finish(item, false, tr('js.failed', 'Upload failed ({status})', { status: xhr.status })); }
     };
     var fd = new FormData();
     fd.append('files', item.file, item.file.name);

@@ -47,14 +47,14 @@ func query(v url.Values) string {
 }
 
 // parseFilter reads the filter from the URL query or writes a 400.
-func parseFilter(w http.ResponseWriter, r *http.Request) (filter.Filter, bool) {
+func (s *Server) parseFilter(w http.ResponseWriter, r *http.Request) (filter.Filter, bool) {
 	f, err := filter.Parse(r.URL.Query())
 	if err != nil {
 		var fe *filter.Error
 		if errors.As(err, &fe) {
-			http.Error(w, fe.Msg, http.StatusBadRequest)
+			s.failErr(w, r, http.StatusBadRequest, fe)
 		} else {
-			http.Error(w, "Bad request", http.StatusBadRequest)
+			s.fail(w, r, http.StatusBadRequest, "err.bad_request")
 		}
 		return f, false
 	}
@@ -126,7 +126,7 @@ func (s *Server) folderGallery(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	flt, ok := parseFilter(w, r)
+	flt, ok := s.parseFilter(w, r)
 	if !ok {
 		return
 	}
@@ -149,13 +149,13 @@ func (s *Server) folderImages(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	flt, ok := parseFilter(w, r)
+	flt, ok := s.parseFilter(w, r)
 	if !ok {
 		return
 	}
 	cur, err := filter.ParseCursor(r.URL.Query())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.fail(w, r, http.StatusBadRequest, "err.invalid_cursor")
 		return
 	}
 	g, err := s.gridView(r.Context(), f.ID, flt, cur)

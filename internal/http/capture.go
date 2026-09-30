@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tiim/photo-collect/internal/i18n"
 	"github.com/tiim/photo-collect/internal/images"
 )
 
@@ -52,7 +53,7 @@ type DeviceRow struct {
 	Status           string
 }
 
-func (s *Server) devicesView(ctx context.Context, folderID string) ([]DeviceRow, error) {
+func (s *Server) devicesView(ctx context.Context, loc *i18n.Localizer, folderID string) ([]DeviceRow, error) {
 	rows, err := s.db.Q.ListFolderDevices(ctx, folderID)
 	if err != nil {
 		return nil, err
@@ -68,13 +69,13 @@ func (s *Server) devicesView(ctx context.Context, folderID string) ([]DeviceRow,
 		d := DeviceRow{Uploader: r.UploaderNickname, Camera: camera, Images: r.ImageCount, Calibrated: r.CorrectedCount > 0}
 		switch {
 		case r.CalibrationCount == 0:
-			d.Status = "no clock photo yet"
+			d.Status = loc.T("device.no_clock_photo")
 		case r.CorrectedCount == 0:
-			d.Status = "clock photo found, but the photos carry no capture time"
+			d.Status = loc.T("device.no_capture_time")
 		case r.MinOffset == r.MaxOffset:
-			d.Status = "corrected by " + formatOffset(r.MinOffset)
+			d.Status = loc.T("device.corrected", map[string]any{"Offset": formatOffset(r.MinOffset)})
 		default:
-			d.Status = "corrected by " + formatOffset(r.MinOffset) + " to " + formatOffset(r.MaxOffset)
+			d.Status = loc.T("device.corrected_range", map[string]any{"Min": formatOffset(r.MinOffset), "Max": formatOffset(r.MaxOffset)})
 		}
 		out = append(out, d)
 	}

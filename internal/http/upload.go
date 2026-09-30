@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -15,8 +14,6 @@ import (
 	"github.com/tiim/photo-collect/internal/database"
 	"github.com/tiim/photo-collect/internal/database/sqlc"
 	"github.com/tiim/photo-collect/internal/domain"
-	"github.com/tiim/photo-collect/internal/images"
-	"github.com/tiim/photo-collect/internal/uploads"
 )
 
 const nicknameCookie = "nickname"
@@ -92,12 +89,13 @@ func (s *Server) uploadSetNickname(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.sameOrigin(r) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		s.fail(w, r, http.StatusForbidden, "err.forbidden")
 		return
 	}
 	nick, err := domain.CleanNickname(r.PostFormValue("nickname"))
 	if err != nil {
-		s.renderUploadPage(w, r, l, "", err.Error(), http.StatusBadRequest)
+		msg, _ := s.errText(r, err)
+		s.renderUploadPage(w, r, l, "", msg, http.StatusBadRequest)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
@@ -114,7 +112,7 @@ func (s *Server) uploadClearNickname(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.sameOrigin(r) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		s.fail(w, r, http.StatusForbidden, "err.forbidden")
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: nicknameCookie, Value: "", Path: "/upload/", MaxAge: -1, HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteLaxMode})
@@ -130,12 +128,12 @@ func (s *Server) uploadImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.sameOrigin(r) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		s.fail(w, r, http.StatusForbidden, "err.forbidden")
 		return
 	}
 	nick := s.nickname(r)
 	if nick == "" {
-		writeJSON(w, http.StatusForbidden, []uploadResult{{Error: "Please enter a nickname first"}})
+		writeJSON(w, http.StatusForbidden, []uploadResult{{Error: s.translator(r).T("err.upload.nickname_first")}})
 		return
 	}
 	// Bound the number of uploads being written at once so parallel requests
@@ -147,13 +145,13 @@ func (s *Server) uploadImages(w http.ResponseWriter, r *http.Request) {
 		default:
 			s.log.Info("upload rejected: server busy", "route", routeLabel(r), "remote", clientip.String(r.Context()))
 			w.Header().Set("Retry-After", "5")
-			writeJSON(w, http.StatusServiceUnavailable, []uploadResult{{Error: "The server is busy, please try again"}})
+			writeJSON(w, http.StatusServiceUnavailable, []uploadResult{{Error: s.translator(r).T("err.upload.busy")}})
 			return
 		}
 	}
 	mt, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mt != "multipart/form-data" || params["boundary"] == "" {
-		http.Error(w, "Expected multipart/form-data", http.StatusBadRequest)
+		s.fail(w, r, http.StatusBadRequest, "err.multipart")
 		return
 	}
 	// Cap the whole request; parts are also capped individually by the ingest service.
@@ -170,7 +168,7 @@ func (s *Server) uploadImages(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			s.log.Warn("upload: reading multipart failed", "err", err)
-			results = append(results, uploadResult{Error: "The upload was interrupted"})
+			results = append(results, uploadResult{Error: s.translator(r).T("err.upload.interrupted")})
 			status = http.StatusBadRequest
 			break
 		}
@@ -180,13 +178,13 @@ func (s *Server) uploadImages(w http.ResponseWriter, r *http.Request) {
 		}
 		name := domain.SafeFilename(part.FileName())
 		if len(results) >= s.cfg.UploadMaxFilesPerRequest {
-			results = append(results, uploadResult{Name: name, Error: "Too many files in one upload"})
+			results = append(results, uploadResult{Name: name, Error: s.translator(r).T("err.upload.too_many_files")})
 			part.Close()
 			continue
 		}
 		res := uploadResult{Name: name}
 		if _, err := s.uploads.Ingest(r.Context(), l.FolderID, nick, name, part); err != nil {
-			res.Error = s.uploadErrorMessage(err, l.FolderID, name)
+			res.Error = s.uploadErrorMessage(r, err, l.FolderID, name)
 		} else {
 			res.OK = true
 			s.log.Info("image uploaded", "folder_id", l.FolderID)
@@ -197,32 +195,13 @@ func (s *Server) uploadImages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status, results)
 }
 
-func (s *Server) uploadErrorMessage(err error, folderID, name string) string {
-	msg := ""
-	switch {
-	case errors.Is(err, uploads.ErrTooLarge):
-		msg = fmt.Sprintf("File is too large (max %d MB)", s.cfg.UploadMaxFileSize>>20)
-	case errors.Is(err, uploads.ErrFolderFull):
-		msg = uploads.ErrFolderFull.Error()
-	case errors.Is(err, uploads.ErrFolderGone):
-		msg = uploads.ErrFolderGone.Error()
-	case errors.Is(err, uploads.ErrEmptyFile):
-		msg = uploads.ErrEmptyFile.Error()
-	case errors.Is(err, images.ErrAnimated):
-		msg = images.ErrAnimated.Error()
-	case errors.Is(err, images.ErrNotAnImage), errors.Is(err, images.ErrUnsupported):
-		msg = images.ErrNotAnImage.Error()
-	case errors.Is(err, images.ErrTooManyPixels):
-		msg = "Image resolution is too large"
-	case errors.Is(err, images.ErrCorrupt):
-		msg = images.ErrCorrupt.Error()
-	}
-	if msg != "" {
+func (s *Server) uploadErrorMessage(r *http.Request, err error, folderID, name string) string {
+	if msg, ok := s.errText(r, err); ok {
 		s.log.Info("upload rejected", "folder_id", folderID, "reason", err.Error())
 		return msg
 	}
 	s.log.Error("upload failed", "folder_id", folderID, "err", err)
-	return "Upload failed, please try again"
+	return s.translator(r).T("err.upload.failed")
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

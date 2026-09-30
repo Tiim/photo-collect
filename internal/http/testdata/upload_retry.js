@@ -15,11 +15,12 @@ function el() {
   return e;
 }
 
-function scenario(name, fn) {
+function scenario(name, fn, strings) {
   let clock = 1000000;
   let timers = [];
   const xhrs = [];
   const els = { dropzone: el(), 'file-input': el(), 'upload-list': el() };
+  if (strings) els.i18n = Object.assign(el(), { textContent: JSON.stringify(strings) });
   els.dropzone.attrs['data-url'] = '/upload/T/images';
   const doc = { getElementById: (id) => els[id] || null, createElement: () => el(), addEventListener() {}, querySelectorAll: () => [] };
   function XHR() {
@@ -123,3 +124,13 @@ scenario('real errors are not retried', (h) => {
   h.reply(h.xhrs[1], 403, JSON.stringify({ results: [{ error: 'Please enter a nickname first' }] }));
   assert.strictEqual(h.status(1), 'Please enter a nickname first');
 });
+
+scenario('texts come from the page language', (h) => {
+  h.pick(1);
+  assert.strictEqual(h.status(0), 'Wird hochgeladen…');
+  h.reply(h.xhrs[0], 429, '', { 'Retry-After': '4' });
+  assert.strictEqual(h.status(0), 'Server ausgelastet, neuer Versuch in 5 s…');
+  h.advance(6000);
+  h.reply(h.xhrs[1], 200, ok);
+  assert.strictEqual(h.status(0), 'Hochgeladen');
+}, { 'js.uploading': 'Wird hochgeladen…', 'js.busy_retry': 'Server ausgelastet, neuer Versuch in {n} s…', 'js.uploaded': 'Hochgeladen' });

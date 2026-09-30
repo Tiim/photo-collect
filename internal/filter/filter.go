@@ -37,11 +37,9 @@ const (
 )
 
 // Error is a validation problem that may be shown to the user.
-type Error struct{ Msg string }
+type Error = domain.UserError
 
-func (e *Error) Error() string { return e.Msg }
-
-func bad(format string, a ...any) error { return &Error{Msg: fmt.Sprintf(format, a...)} }
+func bad(key, msg string, args ...map[string]any) error { return domain.UserErr(key, msg, args...) }
 
 // Filter is a validated gallery filter. The zero value is not valid; use
 // Parse (or Default) so Sort, Dir and TagMode are set.
@@ -79,7 +77,7 @@ func Parse(v url.Values) (Filter, error) {
 			}
 			name, err := domain.NormalizeTag(part)
 			if err != nil {
-				return f, bad("Invalid tag: %s", err)
+				return f, bad("filter.invalid_tag", "Invalid tag: "+err.Error(), map[string]any{"Reason": err})
 			}
 			if !seen[name] {
 				seen[name] = true
@@ -88,7 +86,7 @@ func Parse(v url.Values) (Filter, error) {
 		}
 	}
 	if len(f.Tags) > MaxTags {
-		return f, bad("At most %d tags can be combined", MaxTags)
+		return f, bad("filter.too_many_tags", fmt.Sprintf("At most %d tags can be combined", MaxTags), map[string]any{"Max": MaxTags})
 	}
 	sort.Strings(f.Tags)
 
@@ -97,7 +95,7 @@ func Parse(v url.Values) (Filter, error) {
 	case ModeAny:
 		f.TagMode = ModeAny
 	default:
-		return f, bad("Unknown tag mode %q", m)
+		return f, bad("filter.bad_tag_mode", fmt.Sprintf("Unknown tag mode %q", m))
 	}
 
 	var err error
@@ -108,12 +106,12 @@ func Parse(v url.Values) (Filter, error) {
 		return f, err
 	}
 	if f.RatingMin > 0 && f.RatingMax > 0 && f.RatingMin > f.RatingMax {
-		return f, bad("The minimum rating is above the maximum rating")
+		return f, bad("filter.rating_order", "The minimum rating is above the maximum rating")
 	}
 
 	f.Uploader = strings.Join(strings.Fields(v.Get("uploader")), " ")
 	if len([]rune(f.Uploader)) > 100 {
-		return f, bad("Uploader name is too long")
+		return f, bad("filter.uploader_long", "Uploader name is too long")
 	}
 
 	if f.From, err = date(v, "from"); err != nil {
@@ -123,7 +121,7 @@ func Parse(v url.Values) (Filter, error) {
 		return f, err
 	}
 	if f.From != "" && f.To != "" && f.From > f.To {
-		return f, bad("The start date is after the end date")
+		return f, bad("filter.date_order", "The start date is after the end date")
 	}
 
 	switch g := v.Get("has_gps"); g {
@@ -131,7 +129,7 @@ func Parse(v url.Values) (Filter, error) {
 	case "1", "true", "on":
 		f.HasGPS = true
 	default:
-		return f, bad("Invalid value for has_gps")
+		return f, bad("filter.bad_has_gps", "Invalid value for has_gps")
 	}
 
 	switch s := v.Get("sort"); s {
@@ -139,14 +137,14 @@ func Parse(v url.Values) (Filter, error) {
 	case SortUploaded, SortCaptured, SortRating:
 		f.Sort = s
 	default:
-		return f, bad("Unknown sort order %q", s)
+		return f, bad("filter.bad_sort", fmt.Sprintf("Unknown sort order %q", s))
 	}
 	switch d := v.Get("dir"); d {
 	case "":
 	case DirAsc, DirDesc:
 		f.Dir = d
 	default:
-		return f, bad("Unknown sort direction %q", d)
+		return f, bad("filter.bad_dir", fmt.Sprintf("Unknown sort direction %q", d))
 	}
 	return f, nil
 }
@@ -158,7 +156,7 @@ func rating(v url.Values, key string) (int, error) {
 	}
 	n, err := strconv.Atoi(s)
 	if err != nil || n < 1 || n > 5 {
-		return 0, bad("Rating filters must be between 1 and 5")
+		return 0, bad("filter.rating_range", "Rating filters must be between 1 and 5")
 	}
 	return n, nil
 }
@@ -169,7 +167,7 @@ func date(v url.Values, key string) (string, error) {
 		return "", nil
 	}
 	if _, err := time.Parse(dateLayout, s); err != nil {
-		return "", bad("Dates must look like 2026-06-01")
+		return "", bad("filter.date_format", "Dates must look like 2026-06-01")
 	}
 	return s, nil
 }

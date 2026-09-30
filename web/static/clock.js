@@ -13,6 +13,11 @@
   var statusEl = document.getElementById('clock-status');
   if (!timeEl || !qrEl || typeof qrcode === 'undefined') { return; }
 
+  // Strings come from the server (base.html); English is only a fallback.
+  var strings = {};
+  try { strings = JSON.parse(document.getElementById('i18n').textContent); } catch (e) { /* fallbacks */ }
+  function tr(key, fallback) { return strings[key] || fallback; }
+
   // Milliseconds to add to this device's clock to get server time. The device
   // showing the page may itself have a wrong clock, so we never trust it.
   var skew = 0;
@@ -28,9 +33,9 @@
       // Assume the server stamped the response halfway through the round trip.
       skew = j.ms - (t0 + t1) / 2;
       synced = true;
-      statusEl.textContent = 'Synchronised with the server.';
+      statusEl.textContent = tr('clock.synced', 'Synchronised with the server.');
     }).catch(function () {
-      statusEl.textContent = synced ? '' : 'Could not reach the server. This device’s own clock is shown.';
+      statusEl.textContent = synced ? '' : tr('clock.unreachable', 'Could not reach the server. This device’s own clock is shown.');
     });
   }
 

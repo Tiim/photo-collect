@@ -349,11 +349,14 @@ Requirements:
 The folder grid can be filtered and sorted through query parameters: `tag` (repeatable, at most 10) with `tag_mode=all|any`, `rating_min`, `rating_max` (1-5), `uploader`, `from` / `to` (dates, on the corrected capture time), `has_gps=1`, `sort=uploaded|captured|rating` and `dir=asc|desc`. Invalid values are rejected with 400. Paging uses a keyset on the sort key and the upload sequence number. "Download all matching" and "Move all matching to trash" resolve the filter on the server; trashing all matches requires an active filter and the match count the user saw.
 
 ### Locations
-The EXIF GPS position (range-checked, exact 0,0 ignored) is stored per image at upload; a background job fills it in for older images once. Positions are shown only to signed-in users, on a Leaflet map (vendored, standard OpenStreetMap tiles, opened on demand) in the image detail and as a folder map of the current filter (`GET /folders/{id}/map.json`, id and position only). `img-src` allows the tile host only on pages that can show a map. Derivatives contain no EXIF; the XMP sidecar in exports contains the position.
+The EXIF GPS position (range-checked, exact 0,0 ignored) is stored per image at upload; a background job fills it in for older images once. Positions are shown only to signed-in users, as coordinates with an openstreetmap.org link in the image detail and on a Leaflet folder map (vendored, standard OpenStreetMap tiles, opened on demand) of the current filter (`GET /folders/{id}/map.json`, id and position only). `img-src` allows the tile host only on pages that can show a map. Derivatives contain no EXIF; the XMP sidecar in exports contains the position.
 
 Images should be visible even if thumbnail generation has not completed. A placeholder/loading state can be used until the derived image is available.
 
 The expected number of images is in the hundreds to several thousand, so pagination or incremental loading should be used rather than rendering thousands of images into one HTML response.
+
+### Language
+The UI is available in English and German (informal "du"). The language comes from `?lang=` (stored in a `lang` cookie), then the cookie, then `Accept-Language`, then English. All user-facing texts, including validation errors, upload results and script messages, come from the catalogs in `web/locales/`; dates and sizes follow the language. Logs and user-entered data (tags, names) are not translated.
 
 ## 15. Downloads
 

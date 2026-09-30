@@ -1,3 +1,3 @@
-{{define "folder_counts"}}<span id="folder-counts" class="muted small"{{if .OOB}} hx-swap-oob="true"{{end}}>{{.Count}} images{{if .Trashed}} · <a href="/folders/{{.FolderID}}/trash">Trash ({{.Trashed}})</a>{{end}}</span>{{end}}
+{{define "folder_counts"}}<span id="folder-counts" class="muted small"{{if .OOB}} hx-swap-oob="true"{{end}}>{{t "folder.images" (dict "Count" .Count)}}{{if .Trashed}} · <a href="/folders/{{.FolderID}}/trash">{{t "folder.trash_link" (dict "N" .Trashed)}}</a>{{end}}</span>{{end}}
 {{define "gallery_response"}}{{template "gallery" .Gallery}}{{template "map_card" .Gallery.Map}}{{with .Counts}}{{template "folder_counts" .}}{{end}}{{end}}
 {{define "image_grid"}}{{range .Images}}{{template "image_tile" .}}{{end}}{{if .NextQuery}}<div class="sentinel" hx-get="/folders/{{.FolderID}}/images?{{.NextQuery}}" hx-trigger="revealed" hx-target="this" hx-swap="outerHTML"></div>{{end}}{{end}}

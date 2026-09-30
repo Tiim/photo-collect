@@ -1,36 +1,36 @@
 {{define "image_detail"}}
 <div class="detail">
-  <button type="button" class="close" data-close-modal aria-label="Close">×</button>
+  <button type="button" class="close" data-close-modal aria-label="{{t "detail.close"}}">×</button>
   <div class="preview">
-    {{if .PreviewReady}}<img src="/images/{{.ID}}/preview" alt="{{.OriginalFilename}}">{{else}}<div class="placeholder">Preview is still being generated…</div>{{end}}
+    {{if .PreviewReady}}<img src="/images/{{.ID}}/preview" alt="{{.OriginalFilename}}">{{else}}<div class="placeholder">{{t "detail.preview_pending"}}</div>{{end}}
   </div>
   <div class="side">
     <h2>{{.OriginalFilename}}</h2>
     <dl>
-      <dt>Uploader</dt><dd>{{.UploaderNickname}}</dd>
-      <dt>Uploaded</dt><dd>{{date .CreatedAt}}</dd>
+      <dt>{{t "detail.uploader"}}</dt><dd>{{.UploaderNickname}}</dd>
+      <dt>{{t "detail.uploaded"}}</dt><dd>{{date .CreatedAt}}</dd>
       {{if .HasCaptureTime}}
-      <dt>Taken</dt>
+      <dt>{{t "detail.taken"}}</dt>
       <dd>{{.CapturedAt}}
-        {{if .Corrected}}<br><span class="muted small">camera clock said {{.CameraTime}} · corrected by {{.OffsetText}} from a clock photo</span>
-        {{else if .DeviceKey.Valid}}<br><span class="muted small">no clock photo for this camera yet</span>{{end}}
+        {{if .Corrected}}<br><span class="muted small">{{t "detail.corrected" (dict "Camera" .CameraTime "Offset" .OffsetText)}}</span>
+        {{else if .DeviceKey.Valid}}<br><span class="muted small">{{t "detail.no_clock_photo"}}</span>{{end}}
       </dd>
       {{end}}
-      {{if .IsCalibration}}<dt>Clock photo</dt><dd>Shows {{.CalibRefTime.String}}. Used to correct this camera's timestamps.</dd>{{end}}
-      <dt>Size</dt><dd>{{humanSize .SizeBytes}} · {{.Width}}×{{.Height}}</dd>
-      <dt>Type</dt><dd>{{.MimeType}}</dd>
+      {{if .IsCalibration}}<dt>{{t "detail.clock_photo"}}</dt><dd>{{t "detail.clock_photo_text" (dict "Time" .CalibRefTime.String)}}</dd>{{end}}
+      <dt>{{t "detail.size"}}</dt><dd>{{humanSize .SizeBytes}} · {{.Width}}×{{.Height}}</dd>
+      <dt>{{t "detail.type"}}</dt><dd>{{.MimeType}}</dd>
     </dl>
     {{with .Map}}
-    <h3>Location</h3>
-    <div class="map" data-lat="{{.Lat}}" data-lon="{{.Lon}}"><p class="muted small">Loading map…</p></div>
+    <h3>{{t "detail.location"}}</h3>
+    <p>{{.Coords}} · <a href="{{.OSMURL}}" target="_blank" rel="noopener noreferrer">{{t "detail.open_osm"}}</a></p>
     {{end}}
-    <h3>Rating</h3>
+    <h3>{{t "detail.rating"}}</h3>
     {{template "rating" .TileView}}
-    <h3>Tags</h3>
+    <h3>{{t "detail.tags"}}</h3>
     {{template "image_tags" .Tags}}
     <p class="tile-actions">
-      <a class="button" href="/images/{{.ID}}/original?download=1">Download original</a>
-      <button class="danger" hx-post="/images/{{.ID}}/trash" hx-confirm="Move this photo to the trash? You can restore it from the trash.">Move to trash</button>
+      <a class="button" href="/images/{{.ID}}/original?download=1">{{t "detail.download_original"}}</a>
+      <button class="danger" hx-post="/images/{{.ID}}/trash" hx-confirm="{{t "detail.trash_confirm"}}">{{t "gallery.trash"}}</button>
     </p>
   </div>
 </div>

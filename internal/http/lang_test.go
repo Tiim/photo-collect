@@ -1,6 +1,8 @@
 package http_test
 
 import (
+	"context"
+	"github.com/tiim/photo-collect/internal/database/sqlc"
 	"net/url"
 	"regexp"
 	"strings"
@@ -64,5 +66,62 @@ func TestLanguageResolution(t *testing.T) {
 	body, _ := get(page+"?x=1", "", "")
 	if !strings.Contains(body, `href="/upload/`+m[1]+`?lang=de&amp;x=1"`) || !strings.Contains(body, "<strong lang=\"en\">English</strong>") {
 		t.Errorf("switcher missing:\n%s", body)
+	}
+}
+
+// TestGermanUI renders the signed-in pages and fragments in German: no message
+// ID may leak into the output, errors and formats follow the language.
+func TestGermanUI(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	f, err := e.db.Q.CreateFolder(ctx, sqlc.CreateFolderParams{ID: "f1", Name: "Fest"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.Q.InsertImage(ctx, sqlc.InsertImageParams{
+		ID: "i1", FolderID: f.ID, OriginalFilename: "a.jpg", MimeType: "image/jpeg", SizeBytes: 1536, Width: 1, Height: 1,
+		Sha256: strings.Repeat("a", 64), UploaderNickname: "Anna",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	de := map[string]string{"Accept-Language": "de", "HX-Request": "true"}
+	get := func(target string) string {
+		rec := e.do("GET", target, nil, de, e.cookie)
+		if rec.Code != 200 {
+			t.Fatalf("GET %s: %d", target, rec.Code)
+		}
+		return rec.Body.String()
+	}
+	leak := regexp.MustCompile(`\b(?:nav|upload|clock|folders?|trash|dup|exports|filter|gallery|detail|tags|tile|map|rating|link|js|err|device)\.[a-z_]+\b`)
+	block := regexp.MustCompile(`(?s)<script type="application/json" id="i18n">.*?</script>`)
+	static := regexp.MustCompile(`/static/[\w./-]+`)
+	for _, p := range []string{"/folders", "/folders/f1", "/folders/f1/trash", "/folders/f1/downloads", "/images/i1", "/images/i1/tile", "/"} {
+		body := block.ReplaceAllString(static.ReplaceAllString(get(p), ""), "")
+		if m := leak.FindString(body); m != "" {
+			t.Errorf("GET %s: message ID %q shown instead of text", p, m)
+		}
+	}
+	if body := get("/folders"); !strings.Contains(body, "Ordner erstellen") || !strings.Contains(body, "1 Bild ·") {
+		t.Errorf("folders page not German:\n%s", body)
+	}
+	if body := get("/images/i1"); !strings.Contains(body, "1,5 KiB") || !strings.Contains(body, "Hochgeladen") {
+		t.Errorf("image detail lacks German text or decimal comma:\n%s", body)
+	}
+	if body := get("/"); !strings.Contains(body, "Kamerauhr prüfen") || !strings.Contains(body, `"js.copied":"Kopiert"`) {
+		t.Errorf("clock page not German or lacks script strings:\n%s", body)
+	}
+	// English pages carry the script strings too.
+	if body := e.do("GET", "/folders", nil, nil, e.cookie).Body.String(); !strings.Contains(body, `"js.copied":"Copied"`) {
+		t.Errorf("script strings missing:\n%s", body)
+	}
+
+	// Errors are translated at the edge.
+	rec := e.do("POST", "/images/i1/tags", strings.NewReader(url.Values{"name": {""}}.Encode()),
+		map[string]string{"X-CSRF-Token": e.csrf, "Accept-Language": "de", "Content-Type": "application/x-www-form-urlencoded"}, e.cookie)
+	if rec.Code != 400 || !strings.Contains(rec.Body.String(), "Der Tag ist leer") {
+		t.Errorf("tag error: %d %q", rec.Code, rec.Body)
+	}
+	if rec := e.do("GET", "/folders/f1?rating_min=9", nil, de, e.cookie); rec.Code != 400 || !strings.Contains(rec.Body.String(), "zwischen 1 und 5") {
+		t.Errorf("filter error: %d %q", rec.Code, rec.Body)
 	}
 }

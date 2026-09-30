@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-
 	"github.com/tiim/photo-collect/internal/images/imagetest"
 )
 

@@ -1,7 +1,7 @@
 {{define "duplicates_panel"}}
 {{if .Pending}}
 <section class="panel duplicates" id="duplicates-{{.FolderID}}">
-  <h2>Possible duplicates <span class="muted small">({{len .Pending}})</span></h2>
+  <h2>{{t "dup.title"}} <span class="muted small">({{len .Pending}})</span></h2>
   {{$folderID := .FolderID}}
   {{range .Pending}}
   <div class="dup-pair" id="dup-{{.ID}}">
@@ -11,7 +11,7 @@
       </a>
       <span class="muted small" title="{{.AFilename}}">{{.AFilename}}</span>
       <button hx-post="/duplicates/{{.ID}}/resolve" hx-vals='{"keep":"{{.ImageIDA}}"}' hx-target="#duplicates-{{$folderID}}" hx-swap="outerHTML"
-              hx-confirm="Keep this photo and move the other one to the trash? Its tags and rating will be merged onto this one.">Keep this one</button>
+              hx-confirm="{{t "dup.keep_confirm"}}">{{t "dup.keep"}}</button>
     </div>
     <div class="dup-side">
       <a href="/images/{{.ImageIDB}}" hx-get="/images/{{.ImageIDB}}" hx-target="#modal" hx-swap="innerHTML">
@@ -19,11 +19,11 @@
       </a>
       <span class="muted small" title="{{.BFilename}}">{{.BFilename}}</span>
       <button hx-post="/duplicates/{{.ID}}/resolve" hx-vals='{"keep":"{{.ImageIDB}}"}' hx-target="#duplicates-{{$folderID}}" hx-swap="outerHTML"
-              hx-confirm="Keep this photo and move the other one to the trash? Its tags and rating will be merged onto this one.">Keep this one</button>
+              hx-confirm="{{t "dup.keep_confirm"}}">{{t "dup.keep"}}</button>
     </div>
     <div class="dup-meta">
-      <span class="muted small">Similar image (distance {{.Distance}})</span>
-      <button class="secondary" hx-post="/duplicates/{{.ID}}/dismiss" hx-target="#duplicates-{{$folderID}}" hx-swap="outerHTML">Not a duplicate</button>
+      <span class="muted small">{{t "dup.similar" (dict "Distance" .Distance)}}</span>
+      <button class="secondary" hx-post="/duplicates/{{.ID}}/dismiss" hx-target="#duplicates-{{$folderID}}" hx-swap="outerHTML">{{t "dup.dismiss"}}</button>
     </div>
   </div>
   {{end}}

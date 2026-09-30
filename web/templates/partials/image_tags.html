@@ -1,14 +1,14 @@
 {{define "image_tags"}}
 <div id="image-tags" hx-target="this" hx-swap="outerHTML">
   <ul class="tags">
-    {{range .Tags}}<li>{{.Name}} <button type="button" class="x" title="Remove" hx-post="/images/{{$.ImageID}}/tags/{{.ID}}/delete">×</button></li>
-    {{else}}<li class="muted">No tags</li>{{end}}
+    {{range .Tags}}<li>{{.Name}} <button type="button" class="x" title="{{t "tags.remove"}}" hx-post="/images/{{$.ImageID}}/tags/{{.ID}}/delete">×</button></li>
+    {{else}}<li class="muted">{{t "tags.none"}}</li>{{end}}
   </ul>
   <form hx-post="/images/{{.ImageID}}/tags" class="row">
-    <input type="text" name="name" list="tag-options" placeholder="Add tag" maxlength="64" required autocomplete="off"
+    <input type="text" name="name" list="tag-options" placeholder="{{t "tags.add_placeholder"}}" maxlength="64" required autocomplete="off"
            hx-get="/tags/suggest" hx-trigger="input changed delay:200ms" hx-target="#tag-options" hx-swap="innerHTML">
     <datalist id="tag-options"></datalist>
-    <button type="submit">Add</button>
+    <button type="submit">{{t "tags.add"}}</button>
   </form>
 </div>
 {{end}}
