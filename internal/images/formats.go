@@ -25,10 +25,11 @@ type Info struct {
 
 // Validation errors; messages are safe to show to uploaders.
 var (
-	ErrNotAnImage  = errors.New("file is not a supported image")
-	ErrAnimated    = errors.New("animated images are not supported")
-	ErrCorrupt     = errors.New("image file is damaged or unreadable")
-	ErrUnsupported = errors.New("unsupported image format")
+	ErrNotAnImage    = errors.New("file is not a supported image")
+	ErrAnimated      = errors.New("animated images are not supported")
+	ErrCorrupt       = errors.New("image file is damaged or unreadable")
+	ErrUnsupported   = errors.New("unsupported image format")
+	ErrTooManyPixels = errors.New("image resolution is too large")
 )
 
 // Format is a supported image format. Adding a format means adding an entry
@@ -50,8 +51,10 @@ var formats = []Format{jpegFormat, pngFormat, webpFormat, heicFormat}
 const headSize = 64
 
 // Inspect determines the format from the file content (never from its name),
-// validates it and returns its metadata. r is left at an unspecified position.
-func Inspect(r io.ReadSeeker) (Info, error) {
+// validates it and returns its metadata. Images with more than maxPixels
+// pixels are rejected with ErrTooManyPixels based on the header alone, before
+// any full decode. r is left at an unspecified position.
+func Inspect(r io.ReadSeeker, maxPixels int64) (Info, error) {
 	f, err := detect(r)
 	if err != nil {
 		return Info{}, err
@@ -66,7 +69,10 @@ func Inspect(r io.ReadSeeker) (Info, error) {
 		}
 		return Info{}, fmt.Errorf("%w: %v", ErrCorrupt, err)
 	}
-	if w <= 0 || h <= 0 || w > 20000 || h > 20000 || w*h > 200_000_000 {
+	if w > 0 && h > 0 && int64(w)*int64(h) > maxPixels {
+		return Info{}, fmt.Errorf("%w: %dx%d", ErrTooManyPixels, w, h)
+	}
+	if w <= 0 || h <= 0 || w > 20000 || h > 20000 {
 		return Info{}, fmt.Errorf("%w: unreasonable dimensions %dx%d", ErrCorrupt, w, h)
 	}
 	return Info{MIME: f.MIME, Ext: f.Ext, Width: w, Height: h}, nil

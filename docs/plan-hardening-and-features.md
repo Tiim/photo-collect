@@ -53,7 +53,7 @@ automatically.
   lint or govulncheck target yet; add them to `make test` if wanted).
   Known limitation: pull requests (including from forks) are not checked automatically.
 
-### 1.2 Pixel dimension cap (item 1)
+### 1.2 Pixel dimension cap (item 1) — DONE
 - `internal/config`: new `UPLOAD_MAX_PIXELS` (default 60_000_000, i.e. 60 MP; must be > 0; document in the README that peak decode memory is
   about `WORKER_COUNT x 4 bytes x pixels`, i.e. ~240 MB per worker at the default).
 - `internal/images/formats.go`: `Inspect` returns a new `ErrTooManyPixels` when

@@ -87,7 +87,7 @@ func TestInspect(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			info, err := Inspect(bytes.NewReader(tt.data))
+			info, err := Inspect(bytes.NewReader(tt.data), 60_000_000)
 			if tt.want != nil {
 				if !errors.Is(err, tt.want) {
 					t.Fatalf("err = %v, want %v", err, tt.want)
@@ -190,5 +190,37 @@ func TestExifOrientation(t *testing.T) {
 	img := applyOrientation(testImage(4, 2), 6)
 	if b := img.Bounds(); b.Dx() != 2 || b.Dy() != 4 {
 		t.Fatalf("rotated bounds %v", b)
+	}
+}
+
+func TestInspectPixelCap(t *testing.T) {
+	// Patch the declared dimensions of a tiny image so that the header claims
+	// a huge resolution while the file stays a few hundred bytes.
+	hugeJPEG := jpegBytes(t, 8, 8)
+	i := bytes.Index(hugeJPEG, []byte{0xFF, 0xC0}) // SOF0: marker, len(2), precision(1), height(2), width(2)
+	if i < 0 {
+		t.Fatal("no SOF0 marker")
+	}
+	binary.BigEndian.PutUint16(hugeJPEG[i+5:], 60000)
+	binary.BigEndian.PutUint16(hugeJPEG[i+7:], 60000)
+
+	hugePNG := pngBytes(t, 8, 8)
+	binary.BigEndian.PutUint32(hugePNG[16:], 60000) // IHDR width
+	binary.BigEndian.PutUint32(hugePNG[20:], 60000) // IHDR height
+	binary.BigEndian.PutUint32(hugePNG[29:], crc32.ChecksumIEEE(hugePNG[12:29]))
+
+	for name, data := range map[string][]byte{"jpeg": hugeJPEG, "png": hugePNG} {
+		if _, err := Inspect(bytes.NewReader(data), 60_000_000); !errors.Is(err, ErrTooManyPixels) {
+			t.Errorf("%s: err = %v, want ErrTooManyPixels", name, err)
+		}
+	}
+
+	// Boundary: exactly at the limit passes, one pixel over is rejected.
+	data := jpegBytes(t, 10, 7)
+	if _, err := Inspect(bytes.NewReader(data), 70); err != nil {
+		t.Errorf("at limit: %v", err)
+	}
+	if _, err := Inspect(bytes.NewReader(data), 69); !errors.Is(err, ErrTooManyPixels) {
+		t.Errorf("over limit: err = %v", err)
 	}
 }

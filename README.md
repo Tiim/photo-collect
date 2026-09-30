@@ -36,6 +36,7 @@ The container persists everything under `/data` (`photos.db`, `photos/`, `export
 | `UPLOAD_MAX_FILE_SIZE` | `52428800` | Bytes per file |
 | `UPLOAD_MAX_FILES_PER_REQUEST` | `50` | |
 | `UPLOAD_MAX_IMAGES_PER_FOLDER` | `5000` | |
+| `UPLOAD_MAX_PIXELS` | `60000000` | Maximum pixels (width x height) per image. Peak decode memory is about `WORKER_COUNT` x 4 bytes x pixels, i.e. ~240 MB per worker at the default |
 | `UPLOAD_LINK_DURATION` | `168h` | Default validity of new upload links |
 | `THUMBNAIL_SIZE` / `PREVIEW_SIZE` | `400` / `1600` | Longest edge in pixels |
 | `WORKER_COUNT` | `2` | Background job workers |
