@@ -68,3 +68,4 @@ dl { display:grid; grid-template-columns: auto 1fr; gap:.2rem .8rem; margin:0; }
 .clock-qr svg { width:min(90%, 42dvh, 42vh); height:auto; display:block; margin:0 auto; }
 .clock-time { font:700 clamp(2.5rem, min(19vw, 14dvh), 9rem)/1.1 ui-monospace, monospace; letter-spacing:.02em; }
 .clock-date { font:clamp(1rem, min(6vw, 4dvh), 2rem)/1.3 ui-monospace, monospace; }
+.langs { text-align:center; padding:1rem; color:var(--muted); font-size:.85rem; } .langs a, .langs strong { margin:0 .4rem; }

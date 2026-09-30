@@ -1,0 +1,18 @@
+# German catalog. Use the informal "du" consistently (guests at events).
+"lang.switch" = "Sprache"
+
+"nav.folders" = "Ordner"
+"nav.sign_out" = "Abmelden"
+
+"upload.title" = "Fotos hochladen"
+"upload.folder" = "Ordner: <strong>{{.Name}}</strong>"
+"upload.uploading_as" = "Du lädst hoch als <strong>{{.Nickname}}</strong>"
+"upload.not_you" = "Nicht du?"
+"upload.drop" = "Fotos hierher ziehen"
+"upload.or" = "oder"
+"upload.choose" = "Fotos auswählen"
+"upload.formats" = "JPEG, PNG, WebP und HEIC · bis zu {{.MB}} MB pro Foto"
+"upload.clock_hint" = "Kamera mit falscher Uhrzeit? Fotografiere mit jedem Gerät die <a href=\"/\" target=\"_blank\" rel=\"noopener\">Uhr-Seite</a> und lade dieses Foto ebenfalls hoch: Die Zeitstempel werden dann automatisch korrigiert."
+"upload.nickname" = "Dein Spitzname"
+"upload.nickname_hint" = "Dein Spitzname wird neben den Fotos angezeigt, die du hochlädst."
+"upload.continue" = "Weiter"
