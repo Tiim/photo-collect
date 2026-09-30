@@ -32,17 +32,23 @@ The container persists everything under `/data` (`photos.db`, `photos/`, `export
 | `OIDC_ISSUER_URL` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | – (required) | OIDC provider |
 | `OIDC_REDIRECT_URL` | `$BASE_URL/auth/callback` | Register this redirect URI with the provider |
 | `OIDC_REQUIRE_VERIFIED_EMAIL` | `true` | Reject sign-ins whose `email_verified` claim is present and `false` (a missing claim is accepted) |
-| `TRUSTED_PROXIES` | – (trust nothing) | Comma-separated IPs/CIDRs of reverse proxies whose `X-Forwarded-For` is believed; `private` means RFC 1918, loopback and IPv6 ULA. Only used to determine the client IP for logs (and rate limits later); `BASE_URL` stays the source of truth for links, cookies and the origin check |
+| `TRUSTED_PROXIES` | – (trust nothing) | Comma-separated IPs/CIDRs of reverse proxies whose `X-Forwarded-For` is believed; `private` means RFC 1918, loopback and IPv6 ULA. Used to determine the client IP for logs and rate limits; `BASE_URL` stays the source of truth for links, cookies and the origin check |
 | `SESSION_SECRET` | – (required, ≥32 chars) | Signs the nickname and login-state cookies |
 | `SESSION_TTL` | `720h` | Session lifetime (sliding) |
 | `UPLOAD_MAX_FILE_SIZE` | `52428800` | Bytes per file |
 | `UPLOAD_MAX_FILES_PER_REQUEST` | `50` | |
 | `UPLOAD_MAX_IMAGES_PER_FOLDER` | `5000` | |
 | `UPLOAD_MAX_PIXELS` | `60000000` | Maximum pixels (width x height) per image. Peak decode memory is about `WORKER_COUNT` x 4 bytes x pixels, i.e. ~240 MB per worker at the default |
+| `UPLOAD_MAX_CONCURRENT` | `2 x WORKER_COUNT` | Upload requests ingested at the same time; further requests get `503` with `Retry-After` and the upload page retries them |
+| `RATE_UPLOAD_PER_IP` / `RATE_UPLOAD_PER_LINK` | `100` / `300` | Requests per minute on the anonymous `/upload/...` routes, per client IP (IPv6: per /64) and per upload link. `0` disables the limit |
+| `RATE_AUTH_PER_IP` | `10` | Requests per minute per IP on `/auth/login` and `/auth/callback` |
+| `RATE_NICKNAME_PER_IP` | `5` | Nickname changes per minute per IP |
 | `UPLOAD_LINK_DURATION` | `168h` | Default validity of new upload links |
 | `THUMBNAIL_SIZE` / `PREVIEW_SIZE` | `400` / `1600` | Longest edge in pixels |
 | `WORKER_COUNT` | `2` | Background job workers |
 | `EXPORT_DIR` / `EXPORT_TTL` | `/data/exports` / `24h` | Where ZIP exports are built and how long they are kept |
+| `EXPORT_MAX_CONCURRENT` | `1` | ZIP exports built at the same time; others wait as "Preparing…" |
+| `EXPORT_MAX_BYTES` | `21474836480` (20 GiB) | Exports whose originals add up to more are refused with a message. `0` disables the limit |
 
 ### OIDC
 
@@ -53,6 +59,14 @@ Sign-ins whose ID token says `email_verified: false` are rejected (403, reason l
 without the email). **Behaviour change:** unverified emails used to be accepted. Set
 `OIDC_REQUIRE_VERIFIED_EMAIL=false` if your provider reports unverified addresses for legitimate
 users. Logging in also invalidates any session token sent with the callback request.
+
+#### Rate limits
+
+Limits are in-memory token buckets (burst = the per-minute value) and reset on restart. Requests over
+the limit get `429` with `Retry-After`; the upload page waits and retries automatically, so guests
+only see a "Server busy, retrying" note. Guests on one shared wifi share an IP: if a busy event hits
+`RATE_UPLOAD_PER_IP` (each photo is one request), raise it. Behind a reverse proxy the limits only
+work per client when `TRUSTED_PROXIES` is set (see below); otherwise every guest counts as the proxy.
 
 #### Behind a reverse proxy
 

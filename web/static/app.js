@@ -37,6 +37,11 @@
   var queue = [];
   var active = 0;
   var MAX_PARALLEL = 2;
+  // The server answers 429 (rate limit) or 503 (busy) with Retry-After. Those are
+  // not failures: pause all sending, then try the file again with back-off.
+  var MAX_RETRIES = 10;
+  var pausedUntil = 0;
+  var pumpTimer = null;
 
   ['dragenter', 'dragover'].forEach(function (ev) {
     zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.add('over'); });
@@ -65,6 +70,11 @@
   }
 
   function pump() {
+    var wait = pausedUntil - Date.now();
+    if (wait > 0) {
+      if (!pumpTimer) { pumpTimer = setTimeout(function () { pumpTimer = null; pump(); }, wait); }
+      return;
+    }
     while (active < MAX_PARALLEL && queue.length) { send(queue.shift()); }
   }
 
@@ -73,6 +83,30 @@
     item.status.textContent = msg;
     item.status.className = 'small ' + (ok ? 'ok' : 'error');
     if (ok) { item.bar.value = 100; }
+    pump();
+  }
+
+  // Seconds to wait: the server's Retry-After if it sent one, else 2, 4, 8, ... (max 60),
+  // plus up to 2 s of jitter so parallel clients behind one NAT do not retry in lockstep.
+  function retryDelay(header, attempt) {
+    var secs = parseInt(header, 10);
+    if (!(secs > 0)) { secs = Math.pow(2, attempt); }
+    return Math.min(secs, 60) + Math.random() * 2;
+  }
+
+  function retryLater(item, xhr) {
+    item.attempts = (item.attempts || 0) + 1;
+    if (item.attempts > MAX_RETRIES) {
+      finish(item, false, 'The server is busy, please try again later');
+      return;
+    }
+    var delay = retryDelay(xhr.getResponseHeader('Retry-After'), item.attempts);
+    active--;
+    pausedUntil = Math.max(pausedUntil, Date.now() + delay * 1000);
+    item.bar.value = 0;
+    item.status.className = 'small muted';
+    item.status.textContent = 'Server busy, retrying in ' + Math.ceil(delay) + ' s…';
+    queue.unshift(item);
     pump();
   }
 
@@ -86,6 +120,7 @@
     };
     xhr.onerror = function () { finish(item, false, 'Network error'); };
     xhr.onload = function () {
+      if (xhr.status === 429 || xhr.status === 503) { retryLater(item, xhr); return; }
       var res = null;
       try { res = JSON.parse(xhr.responseText).results[0]; } catch (e) { /* not JSON */ }
       if (res && res.ok) { finish(item, true, 'Uploaded'); }

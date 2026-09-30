@@ -58,6 +58,7 @@ type ExportsView struct {
 	FolderID string
 	Exports  []ExportRow
 	Active   bool // something is still being built: keep polling
+	Error    string
 }
 
 type StdTagsView struct {

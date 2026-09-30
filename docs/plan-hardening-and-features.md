@@ -131,7 +131,7 @@ proxy.
 
 Goal: a leaked link cannot exhaust CPU, disk or storage. Depends on 2.1 for client IPs.
 
-### 3.1 Rate limiting
+### 3.1 Rate limiting — DONE
 - `golang.org/x/time/rate`: in-memory token bucket keyed by string, with periodic eviction of idle
   keys.
 - Config with sane defaults:
@@ -148,11 +148,11 @@ Goal: a leaked link cannot exhaust CPU, disk or storage. Depends on 2.1 for clie
   `2*WORKER_COUNT`) so many parallel uploads don't fill the temp directory. Excess requests get 503
   with `Retry-After`.
 
-### 3.2 Export limits (belongs with disk protection)
+### 3.2 Export limits (belongs with disk protection) — DONE
 - enforce 1 concurrent export , enforced in the export job handler via a semaphore and
   20 GiB max export size, refuse to build larger exports with a clear error.
 
-**Stage 3 exit**: a leaked link cannot exhaust CPU or disk. No quotas (dropped).
+**Stage 3 exit** (all steps done): a leaked link cannot exhaust CPU or disk. No quotas (dropped).
 
 ---
 

@@ -31,3 +31,7 @@ DELETE FROM exports WHERE id = ?;
 
 -- name: ListFolderExportKeys :many
 SELECT id, file_key FROM exports WHERE folder_id = ? AND file_key IS NOT NULL;
+
+-- name: SumExportImageBytes :one
+SELECT CAST(COALESCE(SUM(i.size_bytes), 0) AS INTEGER) FROM export_images ei
+JOIN images i ON i.id = ei.image_id WHERE ei.export_id = ?;

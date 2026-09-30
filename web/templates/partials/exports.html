@@ -1,5 +1,6 @@
 {{define "exports"}}
 <div id="exports"{{if .Active}} hx-get="/folders/{{.FolderID}}/downloads" hx-trigger="every 3s" hx-swap="outerHTML"{{end}}>
+  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
   {{range .Exports}}
   <div class="export">{{date .CreatedAt}} ·
     {{if .Ready}}<a href="/downloads/{{.ID}}">Download ZIP ({{humanSize .SizeBytes.Int64}})</a> <span class="muted small">expires {{date .ExpiresAt}}</span>

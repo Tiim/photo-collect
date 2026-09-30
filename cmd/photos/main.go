@@ -193,6 +193,7 @@ func serve(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	dl.SetLimits(downloads.Limits{MaxConcurrent: cfg.ExportMaxConcurrent, MaxBytes: cfg.ExportMaxBytes})
 	up := uploads.New(db, store, queue, uploads.Limits{
 		MaxFileSize: cfg.UploadMaxFileSize, MaxImagesPerFolder: cfg.UploadMaxImagesPerFolder,
 		MaxPixels: cfg.UploadMaxPixels,

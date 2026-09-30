@@ -9,6 +9,7 @@ import (
 
 	"github.com/tiim/photo-collect/internal/database"
 	"github.com/tiim/photo-collect/internal/domain"
+	"github.com/tiim/photo-collect/internal/downloads"
 )
 
 func (s *Server) exportsView(ctx context.Context, folderID string) (ExportsView, error) {
@@ -63,6 +64,19 @@ func (s *Server) exportCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	sess := sessionFrom(r.Context())
 	exp, err := s.downloads.Create(r.Context(), f.ID, sess.UserID, ids)
+	var tooLarge *downloads.TooLargeError
+	if errors.As(err, &tooLarge) {
+		s.log.Info("export refused: too large", "folder_id", f.ID, "user_id", sess.UserID, "bytes", tooLarge.Size)
+		// 200 so htmx swaps the panel and shows the message.
+		v, err := s.exportsView(r.Context(), f.ID)
+		if err != nil {
+			s.serverError(w, r, err)
+			return
+		}
+		v.Error = tooLarge.Error()
+		s.fragment(w, r, "exports", v)
+		return
+	}
 	if err != nil {
 		s.notFoundOr(w, r, err)
 		return

@@ -78,6 +78,7 @@ func setupWith(t *testing.T, mutate func(*config.Config), log *slog.Logger) *env
 	if err != nil {
 		t.Fatal(err)
 	}
+	dl.SetLimits(downloads.Limits{MaxConcurrent: cfg.ExportMaxConcurrent, MaxBytes: cfg.ExportMaxBytes})
 	up := uploads.New(db, store, queue, uploads.Limits{MaxFileSize: cfg.UploadMaxFileSize, MaxImagesPerFolder: cfg.UploadMaxImagesPerFolder, MaxPixels: cfg.UploadMaxPixels}, log)
 	go queue.Run(ctx, 2)
 

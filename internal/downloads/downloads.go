@@ -23,13 +23,33 @@ import (
 	"github.com/tiim/photo-collect/internal/storage"
 )
 
+// busyRetry is how long an export job waits when all build slots are taken.
+var busyRetry = 15 * time.Second
+
+// Limits bound the resources exports may use.
+type Limits struct {
+	MaxConcurrent int   // builds running at the same time (minimum 1)
+	MaxBytes      int64 // total size of the originals in one export; 0 = unlimited
+}
+
+// TooLargeError is returned for exports above Limits.MaxBytes.
+type TooLargeError struct{ Size, Max int64 }
+
+func (e *TooLargeError) Error() string {
+	return fmt.Sprintf("Export is too large (%s, the limit is %s). Select fewer photos and export in several parts.", gib(e.Size), gib(e.Max))
+}
+
+func gib(n int64) string { return fmt.Sprintf("%.1f GiB", float64(n)/(1<<30)) }
+
 type Service struct {
-	db    *database.DB
-	store storage.Store
-	queue *jobs.Queue
-	dir   string
-	ttl   time.Duration
-	log   *slog.Logger
+	db     *database.DB
+	store  storage.Store
+	queue  *jobs.Queue
+	dir    string
+	ttl    time.Duration
+	log    *slog.Logger
+	limits Limits
+	slots  chan struct{}
 }
 
 func New(db *database.DB, store storage.Store, queue *jobs.Queue, dir string, ttl time.Duration, log *slog.Logger) (*Service, error) {
@@ -37,8 +57,31 @@ func New(db *database.DB, store storage.Store, queue *jobs.Queue, dir string, tt
 		return nil, fmt.Errorf("create export dir: %w", err)
 	}
 	s := &Service{db: db, store: store, queue: queue, dir: dir, ttl: ttl, log: log}
+	s.SetLimits(Limits{MaxConcurrent: 1})
 	queue.Handle(jobs.TypeBuildExport, s.build)
 	return s, nil
+}
+
+// SetLimits configures the export limits. Call before the queue starts.
+func (s *Service) SetLimits(l Limits) {
+	l.MaxConcurrent = max(1, l.MaxConcurrent)
+	s.limits = l
+	s.slots = make(chan struct{}, l.MaxConcurrent)
+}
+
+// checkSize returns a *TooLargeError when the export's originals exceed the limit.
+func (s *Service) checkSize(ctx context.Context, q *sqlc.Queries, exportID string) error {
+	if s.limits.MaxBytes <= 0 {
+		return nil
+	}
+	size, err := q.SumExportImageBytes(ctx, exportID)
+	if err != nil {
+		return err
+	}
+	if size > s.limits.MaxBytes {
+		return &TooLargeError{Size: size, Max: s.limits.MaxBytes}
+	}
+	return nil
 }
 
 // Create records an export of the given images (all images of the folder if
@@ -75,6 +118,9 @@ func (s *Service) Create(ctx context.Context, folderID, userID string, imageIDs 
 		if err != nil {
 			return err
 		}
+		if err := s.checkSize(ctx, q, exp.ID); err != nil {
+			return err // rolls back: nothing is queued
+		}
 		return s.queue.Enqueue(ctx, q, jobs.TypeBuildExport, jobs.ExportPayload{ExportID: exp.ID})
 	})
 	return exp, err
@@ -99,6 +145,25 @@ func (s *Service) build(ctx context.Context, raw json.RawMessage) error {
 	}
 	if exp.Status == "ready" {
 		return nil
+	}
+	if err := s.checkSize(ctx, s.db.Q, exp.ID); err != nil {
+		var tl *TooLargeError
+		if !errors.As(err, &tl) {
+			return err
+		}
+		s.log.Warn("export refused: too large", "export_id", exp.ID, "bytes", tl.Size, "max", tl.Max)
+		if e := s.db.Q.MarkExportFailed(ctx, sqlc.MarkExportFailedParams{
+			Error: sql.NullString{String: err.Error(), Valid: true}, ID: exp.ID}); e != nil {
+			return e
+		}
+		return jobs.Permanent(err)
+	}
+	// Do not hold a job worker while waiting for a build slot: derivatives must keep flowing.
+	select {
+	case s.slots <- struct{}{}:
+		defer func() { <-s.slots }()
+	default:
+		return jobs.Defer(busyRetry)
 	}
 	if err := s.db.Q.MarkExportRunning(ctx, exp.ID); err != nil {
 		return err

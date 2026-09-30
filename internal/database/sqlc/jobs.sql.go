@@ -54,6 +54,20 @@ func (q *Queries) CompleteJob(ctx context.Context, arg CompleteJobParams) error 
 	return err
 }
 
+const deferJob = `-- name: DeferJob :exec
+UPDATE jobs SET status = 'pending', run_at = ?, started_at = NULL, attempts = MAX(attempts - 1, 0) WHERE id = ?
+`
+
+type DeferJobParams struct {
+	RunAt string
+	ID    int64
+}
+
+func (q *Queries) DeferJob(ctx context.Context, arg DeferJobParams) error {
+	_, err := q.db.ExecContext(ctx, deferJob, arg.RunAt, arg.ID)
+	return err
+}
+
 const deleteOldJobs = `-- name: DeleteOldJobs :exec
 DELETE FROM jobs WHERE status = 'done' AND finished_at < ?
 `

@@ -24,6 +24,7 @@ import (
 	"github.com/tiim/photo-collect/internal/i18n"
 	"github.com/tiim/photo-collect/internal/jobs"
 	"github.com/tiim/photo-collect/internal/oidc"
+	"github.com/tiim/photo-collect/internal/ratelimit"
 	"github.com/tiim/photo-collect/internal/sessions"
 	"github.com/tiim/photo-collect/internal/storage"
 	"github.com/tiim/photo-collect/internal/uploads"
@@ -47,6 +48,9 @@ type Server struct {
 
 	clientIPs *clientip.Resolver
 	warnProxy sync.Once
+
+	limUploadIP, limUploadLink, limAuthIP, limNicknameIP *ratelimit.Limiter
+	ingestSlots                                          chan struct{} // nil = unlimited
 }
 
 type Deps struct {
@@ -68,6 +72,14 @@ func NewServer(d Deps) (*Server, error) {
 		oidc: d.OIDC, uploads: d.Uploads, downloads: d.Downloads, queue: d.Queue, log: d.Log,
 		secure:    strings.HasPrefix(d.Config.BaseURL, "https://"),
 		clientIPs: clientip.NewResolver(d.Config.TrustedProxies),
+
+		limUploadIP:   ratelimit.New(d.Config.RateUploadPerIP),
+		limUploadLink: ratelimit.New(d.Config.RateUploadPerLink),
+		limAuthIP:     ratelimit.New(d.Config.RateAuthPerIP),
+		limNicknameIP: ratelimit.New(d.Config.RateNicknamePerIP),
+	}
+	if n := d.Config.UploadMaxConcurrent; n > 0 {
+		s.ingestSlots = make(chan struct{}, n)
 	}
 	bundle, err := i18n.New(web.FS, "locales", d.Log)
 	if err != nil {
@@ -89,15 +101,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "ok") })
 	mux.HandleFunc("GET /readyz", s.readyz)
 
-	mux.HandleFunc("GET /auth/login", s.oidc.Login)
-	mux.HandleFunc("GET /auth/callback", s.oidc.Callback)
+	authLimit := []limitRule{{"auth-ip", s.limAuthIP, s.ipKey}}
+	mux.Handle("GET /auth/login", s.limited(http.HandlerFunc(s.oidc.Login), authLimit...))
+	mux.Handle("GET /auth/callback", s.limited(http.HandlerFunc(s.oidc.Callback), authLimit...))
 	mux.Handle("POST /auth/logout", s.auth(s.logout))
 
 	// Anonymous upload (capability = possession of the link token).
-	mux.HandleFunc("GET /upload/{token}", s.uploadPage)
-	mux.HandleFunc("POST /upload/{token}/nickname", s.uploadSetNickname)
-	mux.HandleFunc("POST /upload/{token}/nickname/clear", s.uploadClearNickname)
-	mux.HandleFunc("POST /upload/{token}/images", s.uploadImages)
+	uploadLimit := []limitRule{{"upload-ip", s.limUploadIP, s.ipKey}, {"upload-link", s.limUploadLink, tokenKey}}
+	nickLimit := append([]limitRule{{"nickname-ip", s.limNicknameIP, s.ipKey}}, uploadLimit...)
+	mux.Handle("GET /upload/{token}", s.limited(http.HandlerFunc(s.uploadPage), uploadLimit...))
+	mux.Handle("POST /upload/{token}/nickname", s.limited(http.HandlerFunc(s.uploadSetNickname), nickLimit...))
+	mux.Handle("POST /upload/{token}/nickname/clear", s.limited(http.HandlerFunc(s.uploadClearNickname), nickLimit...))
+	mux.Handle("POST /upload/{token}/images", s.limited(http.HandlerFunc(s.uploadImages), uploadLimit...))
 
 	// Public clock page (photographed to calibrate camera clocks) and its time source.
 	mux.HandleFunc("GET /{$}", s.clockPage)
