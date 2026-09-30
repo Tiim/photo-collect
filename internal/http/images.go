@@ -21,6 +21,8 @@ type ImageView struct {
 	Folder sqlc.Folder
 	Tags   TagsView
 	Map    *MapView // nil when the image has no position or the folder hides maps
+	Prev   string   // neighbouring image IDs in upload order; "" at either end
+	Next   string
 }
 
 // MapView is the location shown in the image detail (coordinates and a link;
@@ -80,11 +82,28 @@ func (s *Server) imageShow(w http.ResponseWriter, r *http.Request) {
 	if img.GpsLat.Valid && img.GpsLon.Valid {
 		v.Map = &MapView{Lat: img.GpsLat.Float64, Lon: img.GpsLon.Float64}
 	}
+	var nerr error
+	if v.Prev, nerr = neighbour(s.db.Q.PrevImageID(r.Context(), sqlc.PrevImageIDParams{FolderID: img.FolderID, Seq: img.Seq})); nerr != nil {
+		s.serverError(w, r, nerr)
+		return
+	}
+	if v.Next, nerr = neighbour(s.db.Q.NextImageID(r.Context(), sqlc.NextImageIDParams{FolderID: img.FolderID, Seq: img.Seq})); nerr != nil {
+		s.serverError(w, r, nerr)
+		return
+	}
 	if isHTMX(r) {
 		s.fragment(w, r, "image_detail", v)
 		return
 	}
 	s.page(w, r, http.StatusOK, "image", img.OriginalFilename, v)
+}
+
+// neighbour turns "no such row" into an empty ID.
+func neighbour(id string, err error) (string, error) {
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
 }
 
 func (s *Server) imageTile(w http.ResponseWriter, r *http.Request) {

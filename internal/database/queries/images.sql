@@ -135,3 +135,14 @@ FROM images
 WHERE folder_id = ? AND device_key IS NOT NULL AND deleted_at IS NULL
 GROUP BY device_key, uploader_nickname
 ORDER BY uploader_nickname, device_key;
+
+-- Neighbours in upload order, for the previous/next links of the detail view.
+-- name: PrevImageID :one
+SELECT id FROM images
+WHERE folder_id = ? AND deleted_at IS NULL AND seq < ?
+ORDER BY seq DESC LIMIT 1;
+
+-- name: NextImageID :one
+SELECT id FROM images
+WHERE folder_id = ? AND deleted_at IS NULL AND seq > ?
+ORDER BY seq ASC LIMIT 1;

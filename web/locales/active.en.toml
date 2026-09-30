@@ -122,6 +122,11 @@
 "gallery.all_matching" = { one = "The matching photo:", other = "All {{.Count}} matching photos:" }
 "gallery.trash_matching_confirm" = { one = "Move the photo matching this filter to the trash? You can restore it from the trash.", other = "Move all {{.Count}} photos matching this filter to the trash? You can restore them from the trash." }
 
+"detail.prev" = "Previous"
+"detail.next" = "Next"
+"detail.prev_hint" = "Previous photo (←)"
+"detail.next_hint" = "Next photo (→)"
+"detail.keys_hint" = "Keys: 1–5 rate, 0 clears the rating, ← → switch photo."
 "detail.close" = "Close"
 "detail.preview_pending" = "Preview is still being generated…"
 "detail.uploader" = "Uploader"

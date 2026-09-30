@@ -39,6 +39,77 @@
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeModal(); } });
 
+  // ---- image detail: previous/next and rating hotkeys ----
+  // In the gallery modal, previous/next follow the tiles as shown in the folder
+  // view (same filter and order); more pages are loaded when the end is reached.
+  // The standalone image page keeps the server-rendered links (upload order).
+  function inModal() { return modal && !modal.hidden && modal.querySelector('.detail'); }
+  function tileNeighbour(dir) {
+    var d = modal.querySelector('.detail');
+    var n = d && document.getElementById('tile-' + d.getAttribute('data-id'));
+    var sib = dir === 'prev' ? 'previousElementSibling' : 'nextElementSibling';
+    n = n && n[sib];
+    while (n && !n.classList.contains('tile')) { n = n[sib]; }
+    return n ? n.id.replace('tile-', '') : null;
+  }
+  function updateNav() {
+    if (!inModal()) { return; }
+    var more = !!document.querySelector('.sentinel');
+    modal.querySelectorAll('.navarrow').forEach(function (a) { a.remove(); });
+    var d = modal.querySelector('.detail');
+    [['prev', '‹', tileNeighbour('prev')], ['next', '›', tileNeighbour('next') || (more ? 'more' : null)]].forEach(function (x) {
+      if (!x[2]) { return; }
+      var a = document.createElement('a');
+      a.className = 'navarrow ' + x[0];
+      a.setAttribute('data-nav', x[0]);
+      a.href = '#';
+      a.textContent = x[1];
+      a.title = x[0] === 'prev' ? tr('detail.prev_hint', 'Previous photo (←)') : tr('detail.next_hint', 'Next photo (→)');
+      d.parentNode.insertBefore(a, d);
+    });
+  }
+  var waitingForMore = false;
+  function navigate(dir) {
+    if (!inModal()) {
+      var link = document.querySelector('a[data-nav="' + dir + '"]');
+      if (link) { link.click(); }
+      return;
+    }
+    var id = tileNeighbour(dir);
+    if (id) {
+      htmx.ajax('GET', '/images/' + id, { target: '#modal', swap: 'innerHTML' });
+    } else if (dir === 'next') {
+      var sentinel = document.querySelector('.sentinel');
+      if (sentinel && !waitingForMore) { waitingForMore = true; sentinel.scrollIntoView(); }
+    }
+  }
+  document.addEventListener('htmx:afterSettle', function () {
+    if (waitingForMore && inModal() && tileNeighbour('next')) {
+      waitingForMore = false;
+      navigate('next');
+      return;
+    }
+    waitingForMore = false;
+    updateNav();
+  });
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[data-nav]');
+    if (a && inModal()) { e.preventDefault(); navigate(a.getAttribute('data-nav')); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) { return; }
+    var t = e.target;
+    if (t && t.closest && t.closest('input, textarea, select, [contenteditable]')) { return; }
+    if (!document.querySelector('.detail')) { return; }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); navigate('prev'); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); navigate('next'); }
+    else if (/^[0-5]$/.test(e.key)) {
+      var r = document.getElementById('rating');
+      var btn = r && (e.key === '0' ? r.querySelector('.link') : r.querySelectorAll('.star')[+e.key - 1]);
+      if (btn) { e.preventDefault(); btn.click(); }
+    }
+  });
+
   // Actions on the checked tiles: hx-confirm may contain "{n}", which is replaced
   // by the number of selected photos. Nothing selected means nothing to confirm.
   document.addEventListener('htmx:confirm', function (e) {

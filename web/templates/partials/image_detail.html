@@ -1,6 +1,8 @@
 {{define "image_detail"}}
-<div class="detail">
+<div class="detail" data-id="{{.ID}}">
   <button type="button" class="close" data-close-modal aria-label="{{t "detail.close"}}">×</button>
+  {{if .Prev}}<a class="navarrow prev" href="/images/{{.Prev}}" data-nav="prev" title="{{t "detail.prev_hint"}}" aria-label="{{t "detail.prev"}}">‹</a>{{end}}
+  {{if .Next}}<a class="navarrow next" href="/images/{{.Next}}" data-nav="next" title="{{t "detail.next_hint"}}" aria-label="{{t "detail.next"}}">›</a>{{end}}
   <div class="preview">
     {{if .PreviewReady}}<img src="/images/{{.ID}}/preview" alt="{{.OriginalFilename}}">{{else}}<div class="placeholder">{{t "detail.preview_pending"}}</div>{{end}}
   </div>
@@ -32,6 +34,7 @@
       <a class="button" href="/images/{{.ID}}/original?download=1">{{t "detail.download_original"}}</a>
       <button class="danger" hx-post="/images/{{.ID}}/trash" hx-confirm="{{t "detail.trash_confirm"}}">{{t "gallery.trash"}}</button>
     </p>
+    <p class="muted small keys-hint">{{t "detail.keys_hint"}}</p>
   </div>
 </div>
 {{end}}

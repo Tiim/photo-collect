@@ -121,6 +121,11 @@
 "gallery.all_matching" = { one = "Das passende Foto:", other = "Alle {{.Count}} passenden Fotos:" }
 "gallery.trash_matching_confirm" = { one = "Das Foto, das diesem Filter entspricht, in den Papierkorb legen? Du kannst es dort wiederherstellen.", other = "Alle {{.Count}} Fotos, die diesem Filter entsprechen, in den Papierkorb legen? Du kannst sie dort wiederherstellen." }
 
+"detail.prev" = "Zurück"
+"detail.next" = "Weiter"
+"detail.prev_hint" = "Vorheriges Foto (←)"
+"detail.next_hint" = "Nächstes Foto (→)"
+"detail.keys_hint" = "Tasten: 1–5 bewerten, 0 entfernt die Bewertung, ← → Foto wechseln."
 "detail.close" = "Schließen"
 "detail.preview_pending" = "Die Vorschau wird noch erstellt…"
 "detail.uploader" = "Hochgeladen von"

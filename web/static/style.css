@@ -92,7 +92,7 @@ dl { display:grid; grid-template-columns: auto 1fr; gap:.2rem .8rem; margin:0; }
 .filter input, .filter select { width:100%; font-size:.95rem; }
 .filter label.check input { width:auto; }
 .filter .sortpair { display:grid; grid-template-columns:1fr 1fr; gap:.4rem; }
-.filter .filter-actions { display:flex; gap:.5rem; justify-content:flex-end; align-self:end; }
+.filter .filter-actions { display:flex; gap:.5rem; align-self:end; }
 select { padding:.4rem .5rem; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); font:inherit; }
 .matching { margin:0 0 .4rem; }
 
@@ -107,3 +107,12 @@ select { padding:.4rem .5rem; border:1px solid var(--line); border-radius:6px; b
 .devices { list-style:none; margin:0 0 .75rem; padding:0; }
 .devices li { padding:.4rem 0; border-bottom:1px solid var(--line); }
 .devices li:last-child { border-bottom:0; }
+
+.navarrow { position:fixed; top:50%; transform:translateY(-50%); z-index:21; width:2.8rem; height:4rem; display:flex; align-items:center; justify-content:center; font-size:2.6rem; line-height:1; color:#fff; background:rgba(0,0,0,.45); border-radius:8px; text-decoration:none; }
+.navarrow:hover { background:rgba(0,0,0,.75); }
+.navarrow.prev { left:.5rem; }
+.navarrow.next { right:.5rem; }
+.navarrow[hidden] { display:none; }
+.detail .keys-hint { margin-top:auto; }
+.detail .side { display:flex; flex-direction:column; }
+@media (max-width: 800px) { .navarrow { width:2.2rem; height:3rem; font-size:2rem; } }
