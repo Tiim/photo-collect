@@ -44,10 +44,14 @@ type env struct {
 
 func setup(t *testing.T) *env {
 	t.Helper()
+	return setupWith(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+func setupWith(t *testing.T, mutate func(*config.Config), log *slog.Logger) *env {
+	t.Helper()
 	dir := t.TempDir()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := database.Open(ctx, filepath.Join(dir, "test.db"))
 	if err != nil {
@@ -62,6 +66,9 @@ func setup(t *testing.T) *env {
 		BaseURL: "http://example.test", SessionSecret: strings.Repeat("s", 32), SessionTTL: time.Hour,
 		UploadMaxFileSize: 1 << 20, UploadMaxFilesPerRequest: 5, UploadMaxImagesPerFolder: 3, UploadMaxPixels: 60_000_000,
 		UploadLinkDuration: 24 * time.Hour, ThumbnailSize: 40, PreviewSize: 80, ExportTTL: time.Hour,
+	}
+	if mutate != nil {
+		mutate(cfg)
 	}
 	signer := sessions.NewSigner(cfg.SessionSecret)
 	sm := sessions.NewManager(db, cfg.SessionTTL, false)

@@ -2,6 +2,7 @@
 package oidc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 
+	"github.com/tiim/photo-collect/internal/clientip"
 	"github.com/tiim/photo-collect/internal/database"
 	"github.com/tiim/photo-collect/internal/database/sqlc"
 	"github.com/tiim/photo-collect/internal/domain"
@@ -28,6 +30,54 @@ type Config struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
+	// RequireVerifiedEmail rejects logins whose email_verified claim is present and false.
+	RequireVerifiedEmail bool
+}
+
+// optBool is a JSON boolean that remembers whether it was present. Some
+// providers send "true"/"false" as strings, which is accepted too.
+type optBool struct{ set, val bool }
+
+func (b *optBool) UnmarshalJSON(data []byte) error {
+	data = bytes.Trim(bytes.TrimSpace(data), `"`)
+	switch strings.ToLower(string(data)) {
+	case "true":
+		b.set, b.val = true, true
+	case "false":
+		b.set, b.val = true, false
+	case "null", "":
+	default:
+		return fmt.Errorf("invalid boolean %q", data)
+	}
+	return nil
+}
+
+type claims struct {
+	Email             string  `json:"email"`
+	EmailVerified     optBool `json:"email_verified"`
+	Name              string  `json:"name"`
+	PreferredUsername string  `json:"preferred_username"`
+}
+
+// errDenied marks a login that is refused by policy; the text is a log reason,
+// never shown to the user.
+var errDenied = errors.New("access denied")
+
+// authorize applies the configured sign-in restrictions to the ID token claims.
+// A missing email_verified claim is accepted.
+func (h *Handler) authorize(c claims) error {
+	if h.cfg.RequireVerifiedEmail && c.EmailVerified.set && !c.EmailVerified.val {
+		return fmt.Errorf("%w: email not verified", errDenied)
+	}
+	return nil
+}
+
+// Restrictions describes the active sign-in restrictions for the startup log.
+func (h *Handler) Restrictions() []string {
+	if h.cfg.RequireVerifiedEmail {
+		return []string{"verified email required"}
+	}
+	return nil
 }
 
 type Handler struct {
@@ -99,7 +149,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 // Callback completes the flow, creates the user's session and redirects.
 func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	fail := func(status int, msg string, err error) {
-		h.log.Warn("authentication failed", "reason", msg, "err", err, "remote", r.RemoteAddr)
+		h.log.Warn("authentication failed", "reason", msg, "err", err, "remote", clientip.String(r.Context()))
 		http.Error(w, msg, status)
 	}
 	c, err := r.Cookie(flowCookie)
@@ -144,27 +194,31 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusUnauthorized, "Login failed", errors.New("nonce mismatch"))
 		return
 	}
-	var claims struct {
-		Email             string `json:"email"`
-		Name              string `json:"name"`
-		PreferredUsername string `json:"preferred_username"`
-	}
-	if err := idToken.Claims(&claims); err != nil {
+	var cl claims
+	if err := idToken.Claims(&cl); err != nil {
 		fail(http.StatusUnauthorized, "Login failed", err)
 		return
 	}
-	name := claims.Name
+	if err := h.authorize(cl); err != nil {
+		fail(http.StatusForbidden, "Access denied", err)
+		return
+	}
+	name := cl.Name
 	if name == "" {
-		name = claims.PreferredUsername
+		name = cl.PreferredUsername
 	}
 
 	user, err := h.db.Q.UpsertUser(r.Context(), sqlc.UpsertUserParams{
-		ID: domain.NewID(), OidcSub: idToken.Subject, Email: claims.Email, Name: name,
+		ID: domain.NewID(), OidcSub: idToken.Subject, Email: cl.Email, Name: name,
 	})
 	if err != nil {
 		h.log.Error("upsert user", "err", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
+	}
+	// Rotate: a session token presented with the callback must not survive the login.
+	if err := h.sessions.Delete(r.Context(), r); err != nil {
+		h.log.Warn("delete previous session", "err", err)
 	}
 	if err := h.sessions.Create(r.Context(), w, user.ID); err != nil {
 		h.log.Error("create session", "err", err)

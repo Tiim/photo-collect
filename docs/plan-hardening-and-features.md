@@ -89,7 +89,7 @@ automatically.
 Goal: make "who may sign in" and "who is the client" explicit configuration. These two share code
 (client IP, cookie security), so they go together.
 
-### 2.1 Trusted proxy config (item 9)
+### 2.1 Trusted proxy config (item 9) — DONE
 - Config:
   - `TRUSTED_PROXIES`: comma-separated CIDRs/IPs (empty = trust nothing, current behaviour).
     Accept `private` as shorthand for RFC 1918 + loopback + ULA.
@@ -107,7 +107,7 @@ Goal: make "who may sign in" and "who is the client" explicit configuration. The
 - Tests: spoofed `X-Forwarded-For` from an untrusted peer is ignored; chain parsing with multiple
   hops; IPv6; malformed headers.
 
-### 2.2 OIDC access control (item 3)
+### 2.2 OIDC access control (item 3) — DONE
 - Config:
   - `OIDC_REQUIRE_VERIFIED_EMAIL` (default `true`): reject when the `email_verified` claim is
     present and false. A missing claim is accepted. No email/domain/group allowlists (decision).
@@ -122,7 +122,7 @@ Goal: make "who may sign in" and "who is the client" explicit configuration. The
 - Docs: README OIDC section describes the verified-email check and states the default behaviour
   change (unverified emails are now rejected).
 
-**Stage 2 exit**: sign-in is restricted by configuration, and client IPs are correct behind a
+**Stage 2 exit** (all steps done): sign-in is restricted by configuration, and client IPs are correct behind a
 proxy.
 
 ---

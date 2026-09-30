@@ -31,6 +31,8 @@ The container persists everything under `/data` (`photos.db`, `photos/`, `export
 | `WEBDAV_URL` / `WEBDAV_USER` / `WEBDAV_PASSWORD` / `WEBDAV_BASE_PATH` | | WebDAV storage, e.g. a Hetzner Storage Box (`https://uXXXXXX.your-storagebox.de`); `WEBDAV_BASE_PATH` defaults to `/`. Enable WebDAV in the Hetzner console and prefer a sub-account restricted to one directory |
 | `OIDC_ISSUER_URL` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | – (required) | OIDC provider |
 | `OIDC_REDIRECT_URL` | `$BASE_URL/auth/callback` | Register this redirect URI with the provider |
+| `OIDC_REQUIRE_VERIFIED_EMAIL` | `true` | Reject sign-ins whose `email_verified` claim is present and `false` (a missing claim is accepted) |
+| `TRUSTED_PROXIES` | – (trust nothing) | Comma-separated IPs/CIDRs of reverse proxies whose `X-Forwarded-For` is believed; `private` means RFC 1918, loopback and IPv6 ULA. Only used to determine the client IP for logs (and rate limits later); `BASE_URL` stays the source of truth for links, cookies and the origin check |
 | `SESSION_SECRET` | – (required, ≥32 chars) | Signs the nickname and login-state cookies |
 | `SESSION_TTL` | `720h` | Session lifetime (sliding) |
 | `UPLOAD_MAX_FILE_SIZE` | `52428800` | Bytes per file |
@@ -46,6 +48,19 @@ The container persists everything under `/data` (`photos.db`, `photos/`, `export
 
 Create an OAuth2/OpenID provider + application with redirect URI `https://<domain>/auth/callback`
 and scopes `openid profile email`. Every user who can sign in has full access (no roles).
+
+Sign-ins whose ID token says `email_verified: false` are rejected (403, reason logged at warn level
+without the email). **Behaviour change:** unverified emails used to be accepted. Set
+`OIDC_REQUIRE_VERIFIED_EMAIL=false` if your provider reports unverified addresses for legitimate
+users. Logging in also invalidates any session token sent with the callback request.
+
+#### Behind a reverse proxy
+
+Set `TRUSTED_PROXIES` (e.g. `private`) so access logs show the real client instead of the proxy.
+The header chain is read from the right and the first untrusted address wins, so a client cannot
+forge its address. The startup log lists the active restrictions, and a warning is logged if
+`BASE_URL` is `http://` on a non-loopback listener, or if `X-Forwarded-For` arrives while
+`TRUSTED_PROXIES` is empty.
 
 #### Authentik specific
 

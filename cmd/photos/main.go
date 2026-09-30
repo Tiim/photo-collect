@@ -175,7 +175,13 @@ func serve(log *slog.Logger) error {
 	oidcHandler := oidc.New(oidc.Config{
 		IssuerURL: cfg.OIDCIssuerURL, ClientID: cfg.OIDCClientID,
 		ClientSecret: cfg.OIDCClientSecret, RedirectURL: cfg.OIDCRedirectURL,
+		RequireVerifiedEmail: cfg.OIDCRequireVerifiedEmail,
 	}, db, sessionMgr, signer, secure, log)
+
+	for _, w := range cfg.Warnings() {
+		log.Warn(w)
+	}
+	log.Info("access control", "oidc_restrictions", oidcHandler.Restrictions(), "trusted_proxies", len(cfg.TrustedProxies))
 
 	queue := jobs.New(db, log)
 	processor := images.NewGoProcessor(cfg.ThumbnailSize, cfg.PreviewSize, max(1, min(cfg.WorkerCount, runtime.NumCPU())))
