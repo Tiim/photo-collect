@@ -21,7 +21,7 @@ var dateLayouts = map[string]string{"de": "02.01.2006 15:04"}
 
 // jsKeys are the catalog entries exposed to the scripts in web/static.
 var jsKeys = []string{
-	"js.copied", "detail.prev_hint", "detail.next_hint", "js.waiting", "js.uploading", "js.uploaded", "js.network_error", "js.busy_retry",
+	"js.copied", "detail.prev_hint", "detail.next_hint", "js.waiting", "js.uploading", "js.uploaded", "js.already_uploaded", "js.network_error", "js.busy_retry",
 	"js.busy_give_up", "js.expired", "js.too_large", "js.failed", "js.network_retry", "js.processing", "clock.synced", "clock.unreachable",
 }
 

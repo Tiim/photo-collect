@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -17,7 +18,10 @@ import (
 
 // Resumable uploads for flaky connections. The upload page:
 //
-//  1. POST /upload/{token}/chunked {"name","size"} -> 201 {"id","chunk_size","offset"}
+//  1. POST /upload/{token}/chunked {"name","size","sha256"} -> 201 {"id","chunk_size","offset"}
+//     "sha256" (lowercase hex) is optional; if the folder already has a file
+//     with that hash the answer is 200 {"results":[{"name","ok":true,"duplicate":true}]}
+//     and nothing has to be sent.
 //  2. PUT  /upload/{token}/chunked/{id} with header Upload-Offset and up to
 //     chunk_size bytes -> 200 {"offset"}; on 409 it continues at the returned
 //     offset, so a request cut off mid-way only costs what was not received.
@@ -30,6 +34,8 @@ import (
 // chunkIdleTimeout ends a chunk request whose client stopped sending, so a
 // half-open connection does not hold the upload until TCP gives up.
 const chunkIdleTimeout = 30 * time.Second
+
+var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 type chunkState struct {
 	ID        string `json:"id,omitempty"`
@@ -60,8 +66,9 @@ func (s *Server) chunkedStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Name string `json:"name"`
-		Size int64  `json:"size"`
+		Name   string `json:"name"`
+		Size   int64  `json:"size"`
+		SHA256 string `json:"sha256"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&req); err != nil {
 		s.fail(w, r, http.StatusBadRequest, "err.bad_request")
@@ -78,6 +85,24 @@ func (s *Server) chunkedStart(w http.ResponseWriter, r *http.Request) {
 	case req.Size > s.cfg.UploadMaxFileSize:
 		reject(uploads.ErrTooLarge)
 		return
+	}
+	if req.SHA256 != "" {
+		if !sha256Hex.MatchString(req.SHA256) {
+			s.fail(w, r, http.StatusBadRequest, "err.bad_request")
+			return
+		}
+		// Checked before the capacity so a full folder still recognises
+		// files it already has.
+		dup, err := s.uploads.HasImage(r.Context(), l.FolderID, req.SHA256)
+		if err != nil {
+			s.serverError(w, r, err)
+			return
+		}
+		if dup {
+			s.log.Info("upload skipped: already in folder", "folder_id", l.FolderID, "size", req.Size, "remote", clientip.String(r.Context()))
+			writeJSON(w, http.StatusOK, []uploadResult{{Name: name, OK: true, Duplicate: true}})
+			return
+		}
 	}
 	if err := s.uploads.CheckCapacity(r.Context(), l.FolderID); err != nil {
 		reject(err)

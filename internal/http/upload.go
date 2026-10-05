@@ -27,6 +27,9 @@ type uploadResult struct {
 	Name  string `json:"name"`
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
+	// Duplicate marks a file that was not sent because the folder already
+	// has an identical copy.
+	Duplicate bool `json:"duplicate,omitempty"`
 }
 
 // uploadLink resolves the token to a usable link. It renders the appropriate

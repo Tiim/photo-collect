@@ -327,13 +327,42 @@
     else { complete(item); }
   }
 
+  // Files up to this size are hashed first, so the server can tell when it
+  // already has an exact copy and nothing has to be sent. The digest needs the
+  // whole file in memory, larger files are just uploaded.
+  var HASH_MAX = 25 * 1024 * 1024;
+
+  // hash calls done with the file's SHA-256 as lowercase hex, or with "" when
+  // it cannot be computed (no crypto.subtle outside HTTPS, file too large, read
+  // error); the upload then goes ahead without the check.
+  function hash(item, done) {
+    var subtle = window.crypto && window.crypto.subtle;
+    if (!subtle || !item.file.arrayBuffer || item.file.size > HASH_MAX) { done(''); return; }
+    item.file.arrayBuffer().then(function (buf) {
+      return subtle.digest('SHA-256', buf);
+    }).then(function (sum) {
+      done(Array.prototype.map.call(new Uint8Array(sum), function (b) {
+        return ('0' + b.toString(16)).slice(-2);
+      }).join(''));
+    }, function () { done(''); });
+  }
+
   function start(item) {
+    if (item.sha256 === undefined) {
+      hash(item, function (sum) { item.sha256 = sum; start(item); });
+      return;
+    }
+    var body = { name: item.file.name, size: item.file.size };
+    if (item.sha256) { body.sha256 = item.sha256; }
     request(item, {
       method: 'POST', url: url, timeout: REQUEST_MS,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: item.file.name, size: item.file.size }),
+      body: JSON.stringify(body),
     }, function (xhr, res) {
-      if (xhr.status === 201 && res && res.id) {
+      var r = res && res.results && res.results[0];
+      if (xhr.status === 200 && r && r.ok && r.duplicate) {
+        finish(item, true, tr('js.already_uploaded', 'Already uploaded, skipped'));
+      } else if (xhr.status === 201 && res && res.id) {
         item.id = res.id;
         item.chunk = res.chunk_size;
         item.offset = res.offset || 0;

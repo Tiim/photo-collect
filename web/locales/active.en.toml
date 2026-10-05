@@ -179,6 +179,7 @@
 "js.waiting" = "Waiting…"
 "js.uploading" = "Uploading…"
 "js.uploaded" = "Uploaded"
+"js.already_uploaded" = "Already uploaded, skipped"
 "js.network_error" = "Network error"
 "js.busy_retry" = "Server busy, retrying in {n} s…"
 "js.busy_give_up" = "The server is busy, please try again later"

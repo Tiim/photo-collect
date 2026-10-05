@@ -2,6 +2,8 @@ package http_test
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -261,5 +263,55 @@ func TestChunkedUploadSupersedesStuckRequest(t *testing.T) {
 	rec := e.do("POST", "/upload/"+token+"/chunked/"+st.ID+"/complete", nil, nil)
 	if res := decodeChunk(t, rec).Results; rec.Code != 200 || len(res) != 1 {
 		t.Fatalf("complete: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// A start request with the hash of a file the folder already has is answered
+// right away, so the page does not send the bytes again.
+func TestChunkedUploadSkipsKnownHash(t *testing.T) {
+	var logs bytes.Buffer
+	e, token, nick := chunkedEnv(t, &logs)
+	first := jpegFile(t, 20, 20)
+	for i, data := range [][]byte{first, jpegFile(t, 21, 21), jpegFile(t, 22, 22)} { // fills the folder (3 images)
+		if code, res := e.upload(token, nick, fmt.Sprintf("%d.jpg", i), data); code != 200 || res[0]["ok"] != true {
+			t.Fatalf("upload %d: %d %v", i, code, res)
+		}
+	}
+	start := func(sum string) *httptest.ResponseRecorder {
+		body := `{"name":"again.jpg","size":` + strconv.Itoa(len(first)) + `,"sha256":"` + sum + `"}`
+		return e.do("POST", "/upload/"+token+"/chunked", strings.NewReader(body), map[string]string{"Content-Type": "application/json"}, nick)
+	}
+
+	sum := sha256.Sum256(first)
+	rec := start(hex.EncodeToString(sum[:]))
+	res := decodeChunk(t, rec)
+	if rec.Code != 200 || res.ID != "" || len(res.Results) != 1 || res.Results[0]["ok"] != true || res.Results[0]["duplicate"] != true || res.Results[0]["name"] != "again.jpg" {
+		t.Fatalf("known hash (even in a full folder): %d %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(logs.String(), `msg="upload skipped: already in folder"`) {
+		t.Errorf("skip not logged:\n%s", logs.String())
+	}
+
+	other := sha256.Sum256([]byte("something else"))
+	rec = start(hex.EncodeToString(other[:]))
+	if res := decodeChunk(t, rec).Results; rec.Code != nethttp.StatusBadRequest || res[0]["duplicate"] == true {
+		t.Errorf("unknown hash goes on to the normal checks (folder full): %d %s", rec.Code, rec.Body)
+	}
+	if rec := start("NOT-A-HASH"); rec.Code != nethttp.StatusBadRequest {
+		t.Errorf("malformed hash: %d %s", rec.Code, rec.Body)
+	}
+	if n := e.scalar("SELECT count(*) FROM images"); n != 3 {
+		t.Errorf("images: %d", n)
+	}
+}
+
+// Without a full folder an unknown hash starts a normal upload.
+func TestChunkedUploadUnknownHashStarts(t *testing.T) {
+	e, token, nick := chunkedEnv(t, nil)
+	sum := sha256.Sum256([]byte("x"))
+	body := `{"name":"a.jpg","size":10,"sha256":"` + hex.EncodeToString(sum[:]) + `"}`
+	rec := e.do("POST", "/upload/"+token+"/chunked", strings.NewReader(body), map[string]string{"Content-Type": "application/json"}, nick)
+	if st := decodeChunk(t, rec); rec.Code != nethttp.StatusCreated || st.ID == "" {
+		t.Fatalf("start: %d %s", rec.Code, rec.Body)
 	}
 }

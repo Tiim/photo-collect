@@ -17,7 +17,7 @@ function el() {
 }
 
 function file(name, size) {
-  return { name, size, slice: (a, b) => ({ slice: [a, b] }) };
+  return { name, size, slice: (a, b) => ({ slice: [a, b] }), arrayBuffer: () => Promise.resolve(new ArrayBuffer(size)) };
 }
 
 function scenario(name, fn, strings) {
@@ -82,7 +82,23 @@ function scenario(name, fn, strings) {
       }
     },
   };
-  try { fn(h); console.log('ok   ' + name); } catch (e) { console.log('FAIL ' + name + ': ' + (e.stack || e)); process.exitCode = 1; }
+  const fail = (e) => { console.log('FAIL ' + name + ': ' + (e.stack || e)); process.exitCode = 1; };
+  let res;
+  try { res = fn(h, win); } catch (e) { fail(e); return; }
+  if (res && res.then) { pending = pending.then(() => res).then(() => console.log('ok   ' + name), fail); } else { console.log('ok   ' + name); }
+}
+
+let pending = Promise.resolve();
+// settle lets the promises of the hashing step run.
+const settle = () => new Promise((r) => setImmediate(r));
+
+// fakeCrypto stands in for crypto.subtle; digest returns 32 bytes of seed.
+function fakeCrypto(win, seed, fail) {
+  win.crypto = { subtle: { digest: (alg, buf) => {
+    assert.strictEqual(alg, 'SHA-256');
+    assert.ok(buf.byteLength >= 0);
+    return fail ? Promise.reject(new Error('no')) : Promise.resolve(new Uint8Array(32).fill(seed).buffer);
+  } } };
 }
 
 const ok = { results: [{ name: 'f.jpg', ok: true }] };
@@ -305,4 +321,42 @@ scenario('texts come from the page language', (h) => {
 }, {
   'js.uploading': 'Wird hochgeladen…', 'js.busy_retry': 'Server ausgelastet, neuer Versuch in {n} s…', 'js.uploaded': 'Hochgeladen',
   'js.network_retry': 'Verbindung unterbrochen, neuer Versuch in {n} s…',
+});
+
+scenario('a file the server already has is not sent', async (h, win) => {
+  fakeCrypto(win, 0xab);
+  h.pick(1, 10);
+  assert.strictEqual(h.xhrs.length, 0, 'hashes before starting');
+  await settle();
+  const start = h.xhrs[0];
+  assert.deepStrictEqual(JSON.parse(start.body), { name: 'f0.jpg', size: 10, sha256: 'ab'.repeat(32) });
+  h.reply(start, 200, { results: [{ name: 'f0.jpg', ok: true, duplicate: true }] });
+  assert.strictEqual(h.status(0), 'Already uploaded, skipped');
+  assert.strictEqual(h.bar(0), 100);
+  assert.strictEqual(h.xhrs.length, 1, 'no chunks');
+});
+
+scenario('an unknown hash uploads as usual and is not computed twice', async (h, win) => {
+  fakeCrypto(win, 0x01);
+  let digests = 0;
+  const digest = win.crypto.subtle.digest;
+  win.crypto.subtle.digest = (...a) => { digests++; return digest(...a); };
+  h.pick(1, 10);
+  await settle();
+  h.reply(h.xhrs[0], 429, '', { 'Retry-After': '1' });
+  h.advance(3000);
+  assert.strictEqual(JSON.parse(h.last().body).sha256, '01'.repeat(32), 'retry keeps the hash');
+  h.upload(h.last());
+  assert.strictEqual(h.status(0), 'Uploaded');
+  assert.strictEqual(digests, 1);
+});
+
+scenario('without a hash the file is uploaded anyway', async (h, win) => {
+  fakeCrypto(win, 0, true);
+  h.pick(1, 10);
+  await settle();
+  assert.deepStrictEqual(JSON.parse(h.xhrs[0].body), { name: 'f0.jpg', size: 10 }, 'digest failed');
+  fakeCrypto(win, 0x02);
+  h.pick(1, 30 * 1024 * 1024);
+  assert.deepStrictEqual(JSON.parse(h.last().body), { name: 'f0.jpg', size: 30 * 1024 * 1024 }, 'too large to hash');
 });
