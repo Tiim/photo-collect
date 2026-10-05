@@ -172,13 +172,6 @@ func csp(maps bool) string {
 // allowMapTiles relaxes img-src for the response of a handler that renders a map.
 func allowMapTiles(w http.ResponseWriter) { w.Header().Set("Content-Security-Policy", csp(true)) }
 
-func cacheControl(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=3600")
-		next.ServeHTTP(w, r)
-	})
-}
-
 type statusWriter struct {
 	http.ResponseWriter
 	status int

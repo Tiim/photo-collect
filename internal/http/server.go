@@ -54,6 +54,7 @@ type Server struct {
 
 	limUploadIP, limUploadLink, limAuthIP, limNicknameIP *ratelimit.Limiter
 	ingestSlots                                          chan struct{} // nil = unlimited
+	static                                               *staticAssets
 }
 
 type Deps struct {
@@ -90,6 +91,13 @@ func NewServer(d Deps) (*Server, error) {
 		return nil, err
 	}
 	s.i18n = bundle
+	staticFS, err := fs.Sub(web.FS, "static")
+	if err != nil {
+		return nil, err
+	}
+	if s.static, err = newStaticAssets(staticFS); err != nil {
+		return nil, err
+	}
 	if err := s.loadTemplates(); err != nil {
 		return nil, err
 	}
@@ -100,8 +108,7 @@ func NewServer(d Deps) (*Server, error) {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	static, _ := fs.Sub(web.FS, "static")
-	mux.Handle("GET /static/", http.StripPrefix("/static/", cacheControl(http.FileServerFS(static))))
+	mux.Handle("GET /static/", http.StripPrefix("/static/", s.static))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "ok") })
 	mux.HandleFunc("GET /readyz", s.readyz)
 
