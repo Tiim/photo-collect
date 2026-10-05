@@ -109,6 +109,7 @@ func (s *Server) loadTemplates() error {
 		for k, v := range funcs {
 			fm[k] = v
 		}
+		fm["static"] = s.static.URL
 		set := map[string]*template.Template{}
 		for _, p := range pages {
 			files := append([]string{"templates/base.html"}, shared...)

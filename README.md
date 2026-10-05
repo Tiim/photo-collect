@@ -101,6 +101,10 @@ Restrict who may sign in with an Authentik policy/group binding on the applicati
 
 ## Design notes
 
+- Static files are embedded in the binary. Pages link them with a content hash
+  (`/static/app.js?v=<hash>`), which browsers cache for a year: a release that changes a file
+  changes its URL, so nobody keeps running an old script after an update. Unversioned requests
+  (Leaflet, loaded by `map.js`) are revalidated via `ETag` on every use.
 - Originals are stored untouched (bytes and EXIF). Thumbnails/previews are JPEG derivatives
   made by a background worker; HEIC is decoded in pure Go via WASM (no cgo).
 - Camera clocks: the start page (`/`) shows the time as text and QR code. Photograph it with each
