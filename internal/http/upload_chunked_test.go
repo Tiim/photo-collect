@@ -93,7 +93,7 @@ func TestChunkedUploadResumesAfterInterruption(t *testing.T) {
 	if rec.Code == 200 || decodeChunk(t, rec).Offset != 1400 {
 		t.Fatalf("interrupted chunk: %d %s", rec.Code, rec.Body)
 	}
-	for _, want := range []string{`msg="upload chunk interrupted"`, "cause=client_disconnected", "received_bytes=400", "chunk_offset=1000", "resume_offset=1400", "duration_ms="} {
+	for _, want := range []string{`msg="upload chunk incomplete"`, `err="unexpected EOF"`, "received_bytes=400", "chunk_offset=1000", "resume_offset=1400", "duration_ms="} {
 		if !strings.Contains(logs.String(), want) {
 			t.Errorf("interruption log lacks %s:\n%s", want, logs.String())
 		}
@@ -125,7 +125,7 @@ func TestChunkedUploadResumesAfterInterruption(t *testing.T) {
 		t.Fatalf("complete: %d %s", rec.Code, rec.Body)
 	}
 	chunks := (len(data)-1400+999)/1000 + 1
-	for _, want := range []string{`msg="image uploaded"`, "chunked=true", fmt.Sprintf("chunks=%d", chunks), "interrupted=1", "resumed=1"} {
+	for _, want := range []string{`msg="image uploaded"`, "chunked=true", fmt.Sprintf("chunks=%d", chunks), "incomplete_chunks=1", "offset_mismatches=1"} {
 		if !strings.Contains(logs.String(), want) {
 			t.Errorf("upload log lacks %s:\n%s", want, logs.String())
 		}

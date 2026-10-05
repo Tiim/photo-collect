@@ -54,11 +54,11 @@ type Pending struct {
 
 // Stats describe how an upload went, for the logs.
 type Stats struct {
-	Started     time.Time
-	Received    int64 // bytes stored so far
-	Chunks      int   // chunk requests that arrived in full
-	Interrupted int   // chunk requests that broke off
-	Resumed     int   // chunk requests sent at a stale offset (answered with the server's)
+	Started          time.Time
+	Received         int64 // bytes stored so far
+	Chunks           int   // chunk requests that arrived in full
+	Incomplete       int   // chunk requests whose body could not be read in full
+	OffsetMismatches int   // chunk requests sent at an offset other than the server's
 }
 
 // LogID is a short form of the upload ID that identifies it in logs without
@@ -185,7 +185,7 @@ func (c *Chunks) Write(p *Pending, offset int64, r io.Reader, abort func()) (int
 		return p.offset, ErrOffsetMismatch
 	}
 	if offset != p.offset {
-		p.stats.Resumed++
+		p.stats.OffsetMismatches++
 		return p.offset, ErrOffsetMismatch
 	}
 	f, err := os.OpenFile(p.path, os.O_WRONLY, 0)
@@ -199,7 +199,7 @@ func (c *Chunks) Write(p *Pending, offset int64, r io.Reader, abort func()) (int
 	n, copyErr := io.Copy(f, io.LimitReader(r, p.Size-p.offset))
 	p.offset += n
 	if copyErr != nil {
-		p.stats.Interrupted++
+		p.stats.Incomplete++
 		// A failed write may have left bytes past what was counted.
 		if err := f.Truncate(p.offset); err != nil {
 			return p.offset, err
@@ -263,7 +263,7 @@ func (p *Pending) Offset() int64 {
 	return p.offset
 }
 
-// RunSweeper discards abandoned uploads until ctx is done.
+// RunSweeper discards idle uploads until ctx is done.
 func (c *Chunks) RunSweeper(ctx context.Context) {
 	t := time.NewTicker(max(c.ttl/4, time.Minute))
 	defer t.Stop()
@@ -300,9 +300,9 @@ func (c *Chunks) sweepLocked() {
 		p.gone = true
 		if !p.done {
 			os.Remove(p.path)
-			c.log.Info("abandoned upload discarded", "folder_id", p.FolderID, "upload", p.LogID(),
+			c.log.Info("idle upload discarded", "folder_id", p.FolderID, "upload", p.LogID(),
 				"received_bytes", p.offset, "size", p.Size, "chunks", p.stats.Chunks,
-				"interrupted", p.stats.Interrupted, "idle_s", int(c.now().Sub(p.lastUsed).Seconds()))
+				"incomplete_chunks", p.stats.Incomplete, "idle_s", int(c.now().Sub(p.lastUsed).Seconds()))
 		}
 		p.mu.Unlock()
 		delete(c.pending, id)

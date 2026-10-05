@@ -1,65 +1,25 @@
 package http
 
 import (
-	"errors"
 	"io"
-	"math"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/tiim/photo-collect/internal/clientip"
 )
 
-// Causes of an interrupted upload request, as logged in the "cause" field.
-const (
-	causeClientGone   = "client_disconnected" // the connection ended mid-body
-	causeIdle         = "idle_timeout"        // the client sent nothing for chunkIdleTimeout
-	causeSuperseded   = "superseded"          // the client sent the chunk again on a new request
-	causeProxyTimeout = "proxy_timeout"       // ended at a whole minute: likely a reverse proxy read timeout
-	causeOther        = "error"
-)
-
-// interruptCause guesses why reading an upload body failed after d.
-func interruptCause(err error, d time.Duration) string {
-	switch {
-	case errors.Is(err, errChunkAborted):
-		return causeSuperseded
-	case errors.Is(err, os.ErrDeadlineExceeded):
-		return causeIdle
-	case errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, io.EOF):
-		if nearWholeMinute(d) {
-			return causeProxyTimeout
-		}
-		return causeClientGone
-	}
-	return causeOther
-}
-
-// nearWholeMinute reports whether d is within a second of 60 s, 120 s, ...
-// Proxies cut requests off at such round read timeouts (Traefik v3: 60 s),
-// while dropped Wi-Fi connections end at random times.
-func nearWholeMinute(d time.Duration) bool {
-	m := math.Round(d.Minutes())
-	return m >= 1 && math.Abs(d.Seconds()-m*60) < 1
-}
-
-// logInterrupted records an upload request that broke off, with enough detail
-// to tell a flaky client connection from a proxy timeout.
-func (s *Server) logInterrupted(r *http.Request, msg string, err error, start time.Time, received int64, attrs ...any) {
-	d := time.Since(start)
-	cause := interruptCause(err, d)
+// logIncompleteChunk records a chunk request whose body could not be read in
+// full. It logs only what the server observed; err is the read error as
+// returned (e.g. unexpected EOF, an i/o timeout from the idle deadline, or
+// errChunkAborted when a newer request for the same upload arrived).
+func (s *Server) logIncompleteChunk(r *http.Request, msg string, err error, start time.Time, received int64, attrs ...any) {
 	attrs = append(attrs,
-		"cause", cause,
 		"received_bytes", received,
 		"content_length", r.ContentLength,
-		"duration_ms", d.Milliseconds(),
+		"duration_ms", time.Since(start).Milliseconds(),
 		"remote", clientip.String(r.Context()),
 		"err", err,
 	)
-	if cause == causeProxyTimeout {
-		attrs = append(attrs, "hint", "the request ended after a whole number of minutes; a reverse proxy read timeout probably cut it off (Traefik v3 entrypoints default to respondingTimeouts.readTimeout=60s)")
-	}
 	s.log.Info(msg, attrs...)
 }
 

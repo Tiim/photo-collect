@@ -133,7 +133,7 @@ func (s *Server) chunkedPut(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		writeChunkState(w, http.StatusOK, chunkState{Offset: n})
 	case errors.Is(err, uploads.ErrOffsetMismatch):
-		s.log.Info("upload resumed at server offset", "folder_id", p.FolderID, "upload", p.LogID(),
+		s.log.Info("upload chunk offset mismatch", "folder_id", p.FolderID, "upload", p.LogID(),
 			"client_offset", offset, "server_offset", n, "size", p.Size)
 		writeChunkState(w, http.StatusConflict, chunkState{Offset: n})
 	case errors.Is(err, uploads.ErrUploadNotFound):
@@ -141,8 +141,8 @@ func (s *Server) chunkedPut(w http.ResponseWriter, r *http.Request) {
 	case errors.As(err, &tooBig), errors.Is(err, uploads.ErrTooLarge):
 		writeChunkState(w, http.StatusRequestEntityTooLarge, chunkState{Offset: n, Error: s.translator(r).T("err.upload.too_large", map[string]any{"MB": s.cfg.UploadMaxFileSize >> 20})})
 	default:
-		// Usually the client went away; it resumes at the offset.
-		s.logInterrupted(r, "upload chunk interrupted", err, start, counted.n,
+		// The client resumes at the offset.
+		s.logIncompleteChunk(r, "upload chunk incomplete", err, start, counted.n,
 			"folder_id", p.FolderID, "upload", p.LogID(), "chunk_offset", offset, "resume_offset", n, "size", p.Size)
 		writeChunkState(w, http.StatusBadRequest, chunkState{Offset: n, Error: s.translator(r).T("err.upload.interrupted")})
 	}
@@ -175,7 +175,7 @@ func (s *Server) chunkedComplete(w http.ResponseWriter, r *http.Request) {
 		_, err := s.uploads.Ingest(ctx, p.FolderID, p.Nickname, p.Filename, f)
 		if err == nil {
 			s.log.Info("image uploaded", "folder_id", p.FolderID, "chunked", true, "upload", p.LogID(),
-				"size", p.Size, "chunks", st.Chunks, "interrupted", st.Interrupted, "resumed", st.Resumed,
+				"size", p.Size, "chunks", st.Chunks, "incomplete_chunks", st.Incomplete, "offset_mismatches", st.OffsetMismatches,
 				"duration_ms", time.Since(st.Started).Milliseconds())
 		}
 		return err

@@ -40,7 +40,7 @@ The container persists everything under `/data` (`photos.db`, `photos/`, `export
 | `UPLOAD_MAX_PIXELS` | `60000000` | Maximum pixels (width x height) per image. Peak decode memory is about `WORKER_COUNT` x 4 bytes x pixels, i.e. ~240 MB per worker at the default |
 | `UPLOAD_MAX_CONCURRENT` | `2 x WORKER_COUNT` | Upload requests ingested at the same time; further requests get `503` with `Retry-After` and the upload page retries them |
 | `UPLOAD_CHUNK_SIZE` | `524288` | Bytes per request when the upload page sends a file. Files are uploaded in chunks that resume after a dropped connection. Smaller chunks suit slow connections (each chunk must get through before a proxy timeout, see below); keep this at or below your reverse proxy's request body limit (nginx: `client_max_body_size`, default 1 MiB) |
-| `UPLOAD_MAX_PENDING` | `64` | Chunked uploads started but not yet finished (each holds up to `UPLOAD_MAX_FILE_SIZE` on local temp disk). Further starts get `503` and the upload page retries them. Abandoned uploads are discarded after 2 hours |
+| `UPLOAD_MAX_PENDING` | `64` | Chunked uploads started but not yet finished (each holds up to `UPLOAD_MAX_FILE_SIZE` on local temp disk). Further starts get `503` and the upload page retries them. Uploads idle for 2 hours are discarded |
 | `RATE_UPLOAD_PER_IP` / `RATE_UPLOAD_PER_LINK` | `100` / `300` | Requests per minute on the anonymous `/upload/...` routes, per client IP (IPv6: per /64) and per upload link. Chunk requests of an already started upload are not counted. `0` disables the limit |
 | `RATE_AUTH_PER_IP` | `10` | Requests per minute per IP on `/auth/login` and `/auth/callback` |
 | `RATE_NICKNAME_PER_IP` | `5` | Nickname changes per minute per IP |
@@ -87,11 +87,13 @@ only matters if a single chunk takes longer than that: Traefik v3 entrypoints de
 the timeout (e.g. `--entryPoints.websecure.transport.respondingTimeouts.readTimeout=10m`) or lower
 `UPLOAD_CHUNK_SIZE` for very slow connections.
 
-Interrupted uploads are logged at info level with `cause` (`client_disconnected`, `idle_timeout`,
-`superseded` when the page resent the chunk, or `proxy_timeout` when the request ended after a whole
-number of minutes), `received_bytes`, `content_length` and `duration_ms`. `upload resumed at server
-offset` marks a resume, and `image uploaded` reports `chunks`, `interrupted` and `resumed` per file.
-Upload IDs are logged shortened (`upload`), never in full.
+A chunk request whose body could not be read in full is logged at info level as `upload chunk
+incomplete` with the read error (`err`), `received_bytes`, `content_length`, `duration_ms` and
+`remote`. The logs record what the server observed and do not guess a cause: for example, many
+requests ending after exactly 60 s point at a proxy timeout, while varying durations point at the
+client's connection. `upload chunk offset mismatch` logs the client's and the server's offset, and
+`image uploaded` reports `chunks`, `incomplete_chunks` and `offset_mismatches` per file. Uploads
+idle for 2 hours are logged as `idle upload discarded`. Upload IDs are logged shortened (`upload`), never in full.
 
 #### Authentik specific
 

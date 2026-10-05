@@ -56,7 +56,7 @@ func TestChunksSweepDiscardsAbandonedUploads(t *testing.T) {
 		t.Errorf("upload reachable with another token: %v", err)
 	}
 	// Only the unfinished one is reported (c.jpg, nothing received).
-	if n := strings.Count(logs.String(), "abandoned upload discarded"); n != 1 || !strings.Contains(logs.String(), "received_bytes=0 size=4") {
+	if n := strings.Count(logs.String(), "idle upload discarded"); n != 1 || !strings.Contains(logs.String(), "received_bytes=0 size=4") {
 		t.Errorf("sweep log (%d):\n%s", n, logs.String())
 	}
 	entries, _ := os.ReadDir(c.dir)
@@ -89,7 +89,7 @@ func TestChunksAbortUnblocksStuckWriter(t *testing.T) {
 	if off, err := c.Write(p, 3, strings.NewReader("def"), nil); err != nil || off != 6 {
 		t.Fatalf("rest: %d %v", off, err)
 	}
-	if st := p.Stats(); st.Chunks != 1 || st.Interrupted != 1 || st.Resumed != 1 || st.Received != 6 {
+	if st := p.Stats(); st.Chunks != 1 || st.Incomplete != 1 || st.OffsetMismatches != 1 || st.Received != 6 {
 		t.Errorf("stats: %+v", st)
 	}
 }
