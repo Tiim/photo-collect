@@ -3,8 +3,10 @@ package http_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	nethttp "net/http"
 	"net/http/httptest"
 	"strconv"
@@ -15,14 +17,13 @@ import (
 	"github.com/tiim/photo-collect/internal/config"
 )
 
-func chunkedEnv(t *testing.T, mutate func(*config.Config)) (*env, string, *nethttp.Cookie) {
+// chunkedEnv sets up a server with 1000-byte chunks; logs go to logs, if not nil.
+func chunkedEnv(t *testing.T, logs io.Writer) (*env, string, *nethttp.Cookie) {
 	t.Helper()
-	e := setupWith(t, func(c *config.Config) {
-		c.UploadChunkSize = 1000
-		if mutate != nil {
-			mutate(c)
-		}
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if logs == nil {
+		logs = io.Discard
+	}
+	e := setupWith(t, func(c *config.Config) { c.UploadChunkSize = 1000 }, slog.New(slog.NewTextHandler(logs, nil)))
 	token, _ := e.newLink("A")
 	rec := e.do("POST", "/upload/"+token+"/nickname", strings.NewReader("nickname=Bob"), form)
 	return e, token, rec.Result().Cookies()[0]
@@ -70,7 +71,8 @@ func (f *failingReader) Read(b []byte) (int, error) {
 }
 
 func TestChunkedUploadResumesAfterInterruption(t *testing.T) {
-	e, token, nick := chunkedEnv(t, nil)
+	var logs bytes.Buffer
+	e, token, nick := chunkedEnv(t, &logs)
 	data := jpegFile(t, 300, 300)
 	if len(data) < 3000 {
 		t.Fatalf("test image too small for several chunks: %d", len(data))
@@ -92,11 +94,19 @@ func TestChunkedUploadResumesAfterInterruption(t *testing.T) {
 	if rec.Code == 200 || decodeChunk(t, rec).Offset != 1400 {
 		t.Fatalf("interrupted chunk: %d %s", rec.Code, rec.Body)
 	}
+	for _, want := range []string{`msg="upload chunk interrupted"`, "cause=client_disconnected", "received_bytes=400", "chunk_offset=1000", "resume_offset=1400", "duration_ms="} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("interruption log lacks %s:\n%s", want, logs.String())
+		}
+	}
 	// The client did not see that response and resends the whole chunk: the
 	// server tells it where to continue.
 	rec = e.chunkPut(token, st.ID, 1000, bytes.NewReader(data[1000:2000]))
 	if rec.Code != nethttp.StatusConflict || decodeChunk(t, rec).Offset != 1400 {
 		t.Fatalf("stale offset: %d %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(logs.String(), "client_offset=1000 server_offset=1400") {
+		t.Errorf("resume not logged:\n%s", logs.String())
 	}
 	// Completing early is refused with the current offset.
 	rec = e.do("POST", "/upload/"+token+"/chunked/"+st.ID+"/complete", nil, nil)
@@ -114,6 +124,15 @@ func TestChunkedUploadResumesAfterInterruption(t *testing.T) {
 	res := decodeChunk(t, rec).Results
 	if rec.Code != 200 || len(res) != 1 || res[0]["ok"] != true || res[0]["name"] != "IMG_7.jpg" {
 		t.Fatalf("complete: %d %s", rec.Code, rec.Body)
+	}
+	chunks := (len(data)-1400+999)/1000 + 1
+	for _, want := range []string{`msg="image uploaded"`, "chunked=true", fmt.Sprintf("chunks=%d", chunks), "interrupted=1", "resumed=1"} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("upload log lacks %s:\n%s", want, logs.String())
+		}
+	}
+	if strings.Contains(logs.String(), st.ID) || strings.Contains(logs.String(), token) {
+		t.Errorf("upload ID or link token leaked into the log:\n%s", logs.String())
 	}
 	// A retried complete (lost response) gets the same answer without a second image.
 	rec = e.do("POST", "/upload/"+token+"/chunked/"+st.ID+"/complete", nil, nil)
@@ -243,5 +262,34 @@ func TestChunkedUploadSupersedesStuckRequest(t *testing.T) {
 	rec := e.do("POST", "/upload/"+token+"/chunked/"+st.ID+"/complete", nil, nil)
 	if res := decodeChunk(t, rec).Results; rec.Code != 200 || len(res) != 1 {
 		t.Fatalf("complete: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// The multipart endpoint logs a dropped request once, with what arrived.
+func TestMultipartInterruptionIsLoggedOnce(t *testing.T) {
+	var logs bytes.Buffer
+	e, token, nick := chunkedEnv(t, &logs)
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	fw, _ := mw.CreateFormFile("files", "a.jpg")
+	fw.Write(jpegFile(t, 100, 100))
+	mw.Close()
+	cut := body.Bytes()[:body.Len()/2]
+	logs.Reset()
+	rec := e.do("POST", "/upload/"+token+"/images", &failingReader{bytes.NewReader(cut)}, map[string]string{"Content-Type": mw.FormDataContentType()}, nick)
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("code %d %s", rec.Code, rec.Body)
+	}
+	out := logs.String()
+	if n := strings.Count(out, `msg="upload interrupted"`); n != 1 {
+		t.Errorf("logged %d times:\n%s", n, out)
+	}
+	for _, want := range []string{"cause=client_disconnected", "file=a.jpg", fmt.Sprintf("received_bytes=%d", len(cut))} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log lacks %s:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "level=ERROR") {
+		t.Errorf("a client disconnect is not a server error:\n%s", out)
 	}
 }

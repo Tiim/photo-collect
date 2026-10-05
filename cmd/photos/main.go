@@ -226,7 +226,7 @@ func serve(log *slog.Logger) error {
 		return fmt.Errorf("chunked upload directory: %w", err)
 	}
 	defer os.RemoveAll(chunkDir)
-	chunks, err := uploads.NewChunks(chunkDir, cfg.UploadMaxPending, 2*time.Hour)
+	chunks, err := uploads.NewChunks(chunkDir, cfg.UploadMaxPending, 2*time.Hour, log)
 	if err != nil {
 		return fmt.Errorf("chunked upload directory: %w", err)
 	}

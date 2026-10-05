@@ -71,7 +71,7 @@ func TestAbuseLimitDefaultsAndValidation(t *testing.T) {
 	if c.UploadMaxConcurrent != 6 || c.ExportMaxConcurrent != 1 || c.ExportMaxBytes != 20<<30 {
 		t.Errorf("concurrency/export defaults wrong: %d %d %d", c.UploadMaxConcurrent, c.ExportMaxConcurrent, c.ExportMaxBytes)
 	}
-	if c.UploadChunkSize != 1<<20 || c.UploadMaxPending != 64 {
+	if c.UploadChunkSize != 512<<10 || c.UploadMaxPending != 64 {
 		t.Errorf("chunked upload defaults wrong: %d %d", c.UploadChunkSize, c.UploadMaxPending)
 	}
 	for _, kv := range []map[string]string{

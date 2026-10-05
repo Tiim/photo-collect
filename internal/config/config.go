@@ -114,7 +114,7 @@ func Load() (*Config, error) {
 		UploadMaxImagesPerFolder: int(e.int64("UPLOAD_MAX_IMAGES_PER_FOLDER", 5000)),
 		UploadMaxPixels:          e.int64("UPLOAD_MAX_PIXELS", 60_000_000),
 		UploadLinkDuration:       e.duration("UPLOAD_LINK_DURATION", 7*24*time.Hour),
-		UploadChunkSize:          e.int64("UPLOAD_CHUNK_SIZE", 1<<20),
+		UploadChunkSize:          e.int64("UPLOAD_CHUNK_SIZE", 512<<10),
 		UploadMaxPending:         int(e.int64("UPLOAD_MAX_PENDING", 64)),
 
 		RateUploadPerIP:   int(e.int64("RATE_UPLOAD_PER_IP", 100)),

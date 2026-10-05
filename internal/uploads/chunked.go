@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -42,6 +43,7 @@ type Pending struct {
 	done   bool  // ingested; guarded by mu
 	result error // outcome of the ingest; guarded by mu
 	gone   bool  // discarded by the sweeper; guarded by mu
+	stats  Stats // guarded by mu
 
 	// Guarded by Chunks.mu.
 	finished bool // no longer holds data on disk
@@ -50,12 +52,35 @@ type Pending struct {
 	writer   uint64 // generation of the current writer
 }
 
+// Stats describe how an upload went, for the logs.
+type Stats struct {
+	Started     time.Time
+	Received    int64 // bytes stored so far
+	Chunks      int   // chunk requests that arrived in full
+	Interrupted int   // chunk requests that broke off
+	Resumed     int   // chunk requests sent at a stale offset (answered with the server's)
+}
+
+// LogID is a short form of the upload ID that identifies it in logs without
+// revealing the full ID, which grants access to the upload.
+func (p *Pending) LogID() string { return p.ID[:8] }
+
+// Stats returns a snapshot of the upload's statistics.
+func (p *Pending) Stats() Stats {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	st := p.stats
+	st.Received = p.offset
+	return st
+}
+
 // Chunks holds the pending chunked uploads.
 type Chunks struct {
 	dir        string
 	maxPending int
 	ttl        time.Duration
 	now        func() time.Time
+	log        *slog.Logger
 
 	mu      sync.Mutex
 	pending map[string]*Pending
@@ -63,11 +88,11 @@ type Chunks struct {
 
 // NewChunks keeps pending uploads in dir. At most maxPending unfinished uploads
 // exist at a time; uploads untouched for ttl are discarded.
-func NewChunks(dir string, maxPending int, ttl time.Duration) (*Chunks, error) {
+func NewChunks(dir string, maxPending int, ttl time.Duration, log *slog.Logger) (*Chunks, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	return &Chunks{dir: dir, maxPending: maxPending, ttl: ttl, now: time.Now, pending: map[string]*Pending{}}, nil
+	return &Chunks{dir: dir, maxPending: maxPending, ttl: ttl, now: time.Now, log: log, pending: map[string]*Pending{}}, nil
 }
 
 // Start registers a new upload of size bytes.
@@ -93,10 +118,22 @@ func (c *Chunks) Start(token, folderID, nickname, filename string, size int64) (
 	f.Close()
 	p := &Pending{
 		ID: id, Token: token, FolderID: folderID, Nickname: nickname, Filename: filename, Size: size,
-		path: path, lastUsed: c.now(),
+		path: path, lastUsed: c.now(), stats: Stats{Started: c.now()},
 	}
 	c.pending[id] = p
 	return p, nil
+}
+
+// Open returns the number of unfinished uploads and the limit.
+func (c *Chunks) Open() (open, limit int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, p := range c.pending {
+		if !p.finished {
+			open++
+		}
+	}
+	return open, c.maxPending
 }
 
 // Get returns the upload with the given id if it belongs to the link token.
@@ -148,6 +185,7 @@ func (c *Chunks) Write(p *Pending, offset int64, r io.Reader, abort func()) (int
 		return p.offset, ErrOffsetMismatch
 	}
 	if offset != p.offset {
+		p.stats.Resumed++
 		return p.offset, ErrOffsetMismatch
 	}
 	f, err := os.OpenFile(p.path, os.O_WRONLY, 0)
@@ -161,6 +199,7 @@ func (c *Chunks) Write(p *Pending, offset int64, r io.Reader, abort func()) (int
 	n, copyErr := io.Copy(f, io.LimitReader(r, p.Size-p.offset))
 	p.offset += n
 	if copyErr != nil {
+		p.stats.Interrupted++
 		// A failed write may have left bytes past what was counted.
 		if err := f.Truncate(p.offset); err != nil {
 			return p.offset, err
@@ -174,12 +213,14 @@ func (c *Chunks) Write(p *Pending, offset int64, r io.Reader, abort func()) (int
 	} else if err != io.EOF {
 		return p.offset, err
 	}
+	p.stats.Chunks++
 	return p.offset, nil
 }
 
-// Complete runs ingest on the fully received file once. Later calls return the
+// Complete runs ingest on the fully received file once (st describes how
+// the upload went). Later calls return the
 // first outcome, so a client that lost the response can safely ask again.
-func (c *Chunks) Complete(p *Pending, ingest func(io.Reader) error) error {
+func (c *Chunks) Complete(p *Pending, ingest func(io.Reader, Stats) error) error {
 	c.mu.Lock()
 	if p.abort != nil {
 		p.abort()
@@ -201,7 +242,9 @@ func (c *Chunks) Complete(p *Pending, ingest func(io.Reader) error) error {
 	if err != nil {
 		return err
 	}
-	p.result = ingest(f)
+	st := p.stats
+	st.Received = p.offset
+	p.result = ingest(f, st)
 	f.Close()
 	p.done = true
 	os.Remove(p.path)
@@ -257,6 +300,9 @@ func (c *Chunks) sweepLocked() {
 		p.gone = true
 		if !p.done {
 			os.Remove(p.path)
+			c.log.Info("abandoned upload discarded", "folder_id", p.FolderID, "upload", p.LogID(),
+				"received_bytes", p.offset, "size", p.Size, "chunks", p.stats.Chunks,
+				"interrupted", p.stats.Interrupted, "idle_s", int(c.now().Sub(p.lastUsed).Seconds()))
 		}
 		p.mu.Unlock()
 		delete(c.pending, id)

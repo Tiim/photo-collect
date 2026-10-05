@@ -148,20 +148,27 @@ func (s *Server) uploadImages(w http.ResponseWriter, r *http.Request) {
 	}
 	// Cap the whole request; parts are also capped individually by the ingest service.
 	maxBody := int64(s.cfg.UploadMaxFilesPerRequest)*s.cfg.UploadMaxFileSize + (1 << 20)
-	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	start := time.Now()
+	body := &countingReader{r: http.MaxBytesReader(w, r.Body, maxBody)}
+	r.Body = body
 	mr := multipart.NewReader(r.Body, params["boundary"])
 
 	var results []uploadResult
 	status := http.StatusOK
+	// interrupted logs a request whose body broke off once, with the details
+	// that tell a dropped client connection from a proxy timeout.
+	interrupted := func(err error, file string) {
+		s.logInterrupted(r, "upload interrupted", err, start, body.n, "folder_id", l.FolderID, "file", file, "files_done", len(results))
+		status = http.StatusBadRequest
+	}
 	for {
 		part, err := mr.NextPart()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			s.log.Warn("upload: reading multipart failed", "err", err)
+			interrupted(err, "")
 			results = append(results, uploadResult{Error: s.translator(r).T("err.upload.interrupted")})
-			status = http.StatusBadRequest
 			break
 		}
 		if part.FormName() != "files" || part.FileName() == "" {
@@ -175,7 +182,12 @@ func (s *Server) uploadImages(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		res := uploadResult{Name: name}
-		if _, err := s.uploads.Ingest(r.Context(), l.FolderID, nick, name, part); err != nil {
+		if _, err := s.uploads.Ingest(r.Context(), l.FolderID, nick, name, part); errors.Is(err, io.ErrUnexpectedEOF) {
+			interrupted(err, name)
+			results = append(results, uploadResult{Name: name, Error: s.translator(r).T("err.upload.interrupted")})
+			part.Close()
+			break
+		} else if err != nil {
 			res.Error = s.uploadErrorMessage(r, err, l.FolderID, name)
 		} else {
 			res.OK = true

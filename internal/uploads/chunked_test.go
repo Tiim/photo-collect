@@ -1,8 +1,10 @@
 package uploads
 
 import (
+	"bytes"
 	"errors"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
@@ -10,7 +12,8 @@ import (
 )
 
 func TestChunksSweepDiscardsAbandonedUploads(t *testing.T) {
-	c, err := NewChunks(t.TempDir(), 2, time.Hour)
+	var logs bytes.Buffer
+	c, err := NewChunks(t.TempDir(), 2, time.Hour, slog.New(slog.NewTextHandler(&logs, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +29,7 @@ func TestChunksSweepDiscardsAbandonedUploads(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got string
-	if err := c.Complete(a, func(r io.Reader) error { d, _ := io.ReadAll(r); got = string(d); return nil }); err != nil || got != "abcd" {
+	if err := c.Complete(a, func(r io.Reader, _ Stats) error { d, _ := io.ReadAll(r); got = string(d); return nil }); err != nil || got != "abcd" {
 		t.Fatalf("complete: %v %q", err, got)
 	}
 	if _, err := os.Stat(a.path); !os.IsNotExist(err) {
@@ -52,6 +55,10 @@ func TestChunksSweepDiscardsAbandonedUploads(t *testing.T) {
 	if _, err := c.Get(b.ID, "other"); !errors.Is(err, ErrUploadNotFound) {
 		t.Errorf("upload reachable with another token: %v", err)
 	}
+	// Only the unfinished one is reported (c.jpg, nothing received).
+	if n := strings.Count(logs.String(), "abandoned upload discarded"); n != 1 || !strings.Contains(logs.String(), "received_bytes=0 size=4") {
+		t.Errorf("sweep log (%d):\n%s", n, logs.String())
+	}
 	entries, _ := os.ReadDir(c.dir)
 	if len(entries) != 1 {
 		t.Errorf("files left: %d", len(entries))
@@ -59,7 +66,7 @@ func TestChunksSweepDiscardsAbandonedUploads(t *testing.T) {
 }
 
 func TestChunksAbortUnblocksStuckWriter(t *testing.T) {
-	c, err := NewChunks(t.TempDir(), 2, time.Hour)
+	c, err := NewChunks(t.TempDir(), 2, time.Hour, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,5 +88,8 @@ func TestChunksAbortUnblocksStuckWriter(t *testing.T) {
 	}
 	if off, err := c.Write(p, 3, strings.NewReader("def"), nil); err != nil || off != 6 {
 		t.Fatalf("rest: %d %v", off, err)
+	}
+	if st := p.Stats(); st.Chunks != 1 || st.Interrupted != 1 || st.Resumed != 1 || st.Received != 6 {
+		t.Errorf("stats: %+v", st)
 	}
 }

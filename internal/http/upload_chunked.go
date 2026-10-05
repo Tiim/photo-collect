@@ -85,7 +85,9 @@ func (s *Server) chunkedStart(w http.ResponseWriter, r *http.Request) {
 	}
 	p, err := s.chunks.Start(l.Token, l.FolderID, nick, name, req.Size)
 	if errors.Is(err, uploads.ErrTooManyPending) {
-		s.log.Info("upload rejected: too many pending uploads", "route", routeLabel(r), "remote", clientip.String(r.Context()))
+		open, limit := s.chunks.Open()
+		s.log.Info("upload rejected: too many pending uploads", "route", routeLabel(r), "remote", clientip.String(r.Context()),
+			"pending", open, "limit", limit)
 		w.Header().Set("Retry-After", "10")
 		writeJSON(w, http.StatusServiceUnavailable, []uploadResult{{Name: name, Error: s.translator(r).T("err.upload.busy")}})
 		return
@@ -94,6 +96,8 @@ func (s *Server) chunkedStart(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
+	s.log.Info("chunked upload started", "folder_id", l.FolderID, "upload", p.LogID(), "size", req.Size,
+		"chunk_size", s.cfg.UploadChunkSize, "remote", clientip.String(r.Context()))
 	writeChunkState(w, http.StatusCreated, chunkState{ID: p.ID, ChunkSize: s.cfg.UploadChunkSize})
 }
 
@@ -105,8 +109,12 @@ func (s *Server) chunkedPut(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, http.StatusForbidden, "err.forbidden")
 		return
 	}
+	start := time.Now()
 	p, err := s.chunks.Get(r.PathValue("id"), r.PathValue("token"))
 	if err != nil {
+		// Expected after a restart or once an abandoned upload was discarded;
+		// the page then sends the file again.
+		s.log.Info("upload chunk for unknown upload", "remote", clientip.String(r.Context()))
 		writeChunkState(w, http.StatusNotFound, chunkState{Error: s.translator(r).T("err.upload.interrupted")})
 		return
 	}
@@ -116,7 +124,8 @@ func (s *Server) chunkedPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rc := http.NewResponseController(w)
-	body := &idleReader{r: http.MaxBytesReader(w, r.Body, s.cfg.UploadChunkSize), rc: rc}
+	counted := &countingReader{r: http.MaxBytesReader(w, r.Body, s.cfg.UploadChunkSize)}
+	body := &idleReader{r: counted, rc: rc}
 	n, err := s.chunks.Write(p, offset, body, body.abort)
 	_ = rc.SetReadDeadline(time.Time{})
 	var tooBig *http.MaxBytesError
@@ -124,6 +133,8 @@ func (s *Server) chunkedPut(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		writeChunkState(w, http.StatusOK, chunkState{Offset: n})
 	case errors.Is(err, uploads.ErrOffsetMismatch):
+		s.log.Info("upload resumed at server offset", "folder_id", p.FolderID, "upload", p.LogID(),
+			"client_offset", offset, "server_offset", n, "size", p.Size)
 		writeChunkState(w, http.StatusConflict, chunkState{Offset: n})
 	case errors.Is(err, uploads.ErrUploadNotFound):
 		writeChunkState(w, http.StatusNotFound, chunkState{Error: s.translator(r).T("err.upload.interrupted")})
@@ -131,7 +142,8 @@ func (s *Server) chunkedPut(w http.ResponseWriter, r *http.Request) {
 		writeChunkState(w, http.StatusRequestEntityTooLarge, chunkState{Offset: n, Error: s.translator(r).T("err.upload.too_large", map[string]any{"MB": s.cfg.UploadMaxFileSize >> 20})})
 	default:
 		// Usually the client went away; it resumes at the offset.
-		s.log.Info("upload chunk interrupted", "folder_id", p.FolderID, "offset", n, "err", err)
+		s.logInterrupted(r, "upload chunk interrupted", err, start, counted.n,
+			"folder_id", p.FolderID, "upload", p.LogID(), "chunk_offset", offset, "resume_offset", n, "size", p.Size)
 		writeChunkState(w, http.StatusBadRequest, chunkState{Offset: n, Error: s.translator(r).T("err.upload.interrupted")})
 	}
 }
@@ -159,10 +171,12 @@ func (s *Server) chunkedComplete(w http.ResponseWriter, r *http.Request) {
 	// The client may drop the connection while the file is processed; finish
 	// anyway so its retry gets the result instead of a second ingest.
 	ctx := context.WithoutCancel(r.Context())
-	err = s.chunks.Complete(p, func(f io.Reader) error {
+	err = s.chunks.Complete(p, func(f io.Reader, st uploads.Stats) error {
 		_, err := s.uploads.Ingest(ctx, p.FolderID, p.Nickname, p.Filename, f)
 		if err == nil {
-			s.log.Info("image uploaded", "folder_id", p.FolderID, "chunked", true)
+			s.log.Info("image uploaded", "folder_id", p.FolderID, "chunked", true, "upload", p.LogID(),
+				"size", p.Size, "chunks", st.Chunks, "interrupted", st.Interrupted, "resumed", st.Resumed,
+				"duration_ms", time.Since(st.Started).Milliseconds())
 		}
 		return err
 	})

@@ -83,7 +83,7 @@ func setupWith(t *testing.T, mutate func(*config.Config), log *slog.Logger) *env
 	if cfg.UploadChunkSize == 0 {
 		cfg.UploadChunkSize = 64 << 10
 	}
-	chunks, err := uploads.NewChunks(filepath.Join(dir, "chunks"), 4, time.Hour)
+	chunks, err := uploads.NewChunks(filepath.Join(dir, "chunks"), 4, time.Hour, log)
 	if err != nil {
 		t.Fatal(err)
 	}
