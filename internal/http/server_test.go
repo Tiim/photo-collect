@@ -10,12 +10,12 @@ import (
 	"image/jpeg"
 	"io"
 	"log/slog"
-	"mime/multipart"
 	nethttp "net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +36,7 @@ import (
 type env struct {
 	t        *testing.T
 	h        nethttp.Handler
+	srv      *apphttp.Server
 	db       *database.DB
 	storeDir string
 	cookie   *nethttp.Cookie
@@ -64,7 +65,7 @@ func setupWith(t *testing.T, mutate func(*config.Config), log *slog.Logger) *env
 	}
 	cfg := &config.Config{
 		BaseURL: "http://example.test", SessionSecret: strings.Repeat("s", 32), SessionTTL: time.Hour,
-		UploadMaxFileSize: 1 << 20, UploadMaxFilesPerRequest: 5, UploadMaxImagesPerFolder: 3, UploadMaxPixels: 60_000_000,
+		UploadMaxFileSize: 1 << 20, UploadMaxImagesPerFolder: 3, UploadMaxPixels: 60_000_000,
 		UploadLinkDuration: 24 * time.Hour, ThumbnailSize: 40, PreviewSize: 80, ExportTTL: time.Hour,
 	}
 	if mutate != nil {
@@ -97,7 +98,7 @@ func setupWith(t *testing.T, mutate func(*config.Config), log *slog.Logger) *env
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &env{t: t, h: srv.Handler(), db: db, storeDir: filepath.Join(dir, "photos")}
+	e := &env{t: t, h: srv.Handler(), srv: srv, db: db, storeDir: filepath.Join(dir, "photos")}
 
 	// Sign in a user without going through OIDC.
 	user, err := db.Q.UpsertUser(ctx, sqlc.UpsertUserParams{ID: "u1", OidcSub: "sub", Email: "a@b.c", Name: "Tester"})
@@ -154,18 +155,34 @@ func jpegFile(t *testing.T, w, h int) []byte {
 	return b.Bytes()
 }
 
+// upload sends a file like the upload page does (start, chunks, complete) and
+// returns the status and results of the start request if it was refused, else
+// those of the complete request.
 func (e *env) upload(token string, nick *nethttp.Cookie, filename string, data []byte) (int, []map[string]any) {
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
-	fw, _ := mw.CreateFormFile("files", filename)
-	fw.Write(data)
-	mw.Close()
 	var cookies []*nethttp.Cookie
 	if nick != nil {
 		cookies = append(cookies, nick)
 	}
-	rec := e.do("POST", "/upload/"+token+"/images", &body, map[string]string{"Content-Type": mw.FormDataContentType()}, cookies...)
-	var out struct{ Results []map[string]any }
+	start, _ := json.Marshal(map[string]any{"name": filename, "size": len(data)})
+	rec := e.do("POST", "/upload/"+token+"/chunked", bytes.NewReader(start), map[string]string{"Content-Type": "application/json"}, cookies...)
+	var out struct {
+		ID        string `json:"id"`
+		ChunkSize int    `json:"chunk_size"`
+		Results   []map[string]any
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if rec.Code != nethttp.StatusCreated {
+		return rec.Code, out.Results
+	}
+	base := "/upload/" + token + "/chunked/" + out.ID
+	for off := 0; off < len(data); off += out.ChunkSize {
+		end := min(off+out.ChunkSize, len(data))
+		if rec := e.do("PUT", base, bytes.NewReader(data[off:end]), map[string]string{"Upload-Offset": strconv.Itoa(off)}); rec.Code != nethttp.StatusOK {
+			e.t.Fatalf("upload chunk at %d: %d %s", off, rec.Code, rec.Body)
+		}
+	}
+	rec = e.do("POST", base+"/complete", nil, nil)
+	out.Results = nil
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
 	return rec.Code, out.Results
 }

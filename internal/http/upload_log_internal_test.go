@@ -17,7 +17,7 @@ func TestInterruptCause(t *testing.T) {
 	}{
 		{io.ErrUnexpectedEOF, 45689 * time.Millisecond, causeClientGone},
 		{io.ErrUnexpectedEOF, 60001 * time.Millisecond, causeProxyTimeout},
-		{fmt.Errorf("multipart: NextPart: %w", io.ErrUnexpectedEOF), 59600 * time.Millisecond, causeProxyTimeout},
+		{fmt.Errorf("read body: %w", io.ErrUnexpectedEOF), 59600 * time.Millisecond, causeProxyTimeout},
 		{io.ErrUnexpectedEOF, 120300 * time.Millisecond, causeProxyTimeout},
 		{io.ErrUnexpectedEOF, 500 * time.Millisecond, causeClientGone},
 		{io.ErrUnexpectedEOF, 90 * time.Second, causeClientGone},

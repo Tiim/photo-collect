@@ -116,7 +116,6 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /upload/{token}", s.limited(http.HandlerFunc(s.uploadPage), uploadLimit...))
 	mux.Handle("POST /upload/{token}/nickname", s.limited(http.HandlerFunc(s.uploadSetNickname), nickLimit...))
 	mux.Handle("POST /upload/{token}/nickname/clear", s.limited(http.HandlerFunc(s.uploadClearNickname), nickLimit...))
-	mux.Handle("POST /upload/{token}/images", s.limited(http.HandlerFunc(s.uploadImages), uploadLimit...))
 	mux.Handle("POST /upload/{token}/chunked", s.limited(http.HandlerFunc(s.chunkedStart), uploadLimit...))
 	mux.HandleFunc("PUT /upload/{token}/chunked/{id}", s.chunkedPut)
 	mux.Handle("POST /upload/{token}/chunked/{id}/complete", s.limited(http.HandlerFunc(s.chunkedComplete), uploadLimit...))

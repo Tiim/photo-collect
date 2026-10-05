@@ -21,8 +21,8 @@ import (
 //  2. PUT  /upload/{token}/chunked/{id} with header Upload-Offset and up to
 //     chunk_size bytes -> 200 {"offset"}; on 409 it continues at the returned
 //     offset, so a request cut off mid-way only costs what was not received.
-//  3. POST /upload/{token}/chunked/{id}/complete -> {"results":[...]} as for
-//     the multipart endpoint; asking again returns the same outcome.
+//  3. POST /upload/{token}/chunked/{id}/complete -> {"results":[{"name","ok","error"}]};
+//     asking again returns the same outcome.
 //
 // A 404 with {"error"} on steps 2 and 3 means the server no longer knows the
 // upload (restart, or abandoned too long) and the file has to be sent again.

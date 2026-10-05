@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"mime/multipart"
 	nethttp "net/http"
 	"net/http/httptest"
 	"strconv"
@@ -262,34 +261,5 @@ func TestChunkedUploadSupersedesStuckRequest(t *testing.T) {
 	rec := e.do("POST", "/upload/"+token+"/chunked/"+st.ID+"/complete", nil, nil)
 	if res := decodeChunk(t, rec).Results; rec.Code != 200 || len(res) != 1 {
 		t.Fatalf("complete: %d %s", rec.Code, rec.Body)
-	}
-}
-
-// The multipart endpoint logs a dropped request once, with what arrived.
-func TestMultipartInterruptionIsLoggedOnce(t *testing.T) {
-	var logs bytes.Buffer
-	e, token, nick := chunkedEnv(t, &logs)
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
-	fw, _ := mw.CreateFormFile("files", "a.jpg")
-	fw.Write(jpegFile(t, 100, 100))
-	mw.Close()
-	cut := body.Bytes()[:body.Len()/2]
-	logs.Reset()
-	rec := e.do("POST", "/upload/"+token+"/images", &failingReader{bytes.NewReader(cut)}, map[string]string{"Content-Type": mw.FormDataContentType()}, nick)
-	if rec.Code != nethttp.StatusBadRequest {
-		t.Fatalf("code %d %s", rec.Code, rec.Body)
-	}
-	out := logs.String()
-	if n := strings.Count(out, `msg="upload interrupted"`); n != 1 {
-		t.Errorf("logged %d times:\n%s", n, out)
-	}
-	for _, want := range []string{"cause=client_disconnected", "file=a.jpg", fmt.Sprintf("received_bytes=%d", len(cut))} {
-		if !strings.Contains(out, want) {
-			t.Errorf("log lacks %s:\n%s", want, out)
-		}
-	}
-	if strings.Contains(out, "level=ERROR") {
-		t.Errorf("a client disconnect is not a server error:\n%s", out)
 	}
 }

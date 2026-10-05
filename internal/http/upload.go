@@ -4,9 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"io"
-	"mime"
-	"mime/multipart"
 	"net/http"
 	"time"
 
@@ -23,7 +20,6 @@ type UploadPage struct {
 	FolderName string
 	Nickname   string // empty until the visitor has chosen one
 	Error      string
-	MaxFiles   int
 	MaxSizeMB  int64
 }
 
@@ -79,7 +75,7 @@ func (s *Server) uploadPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) renderUploadPage(w http.ResponseWriter, r *http.Request, l sqlc.GetUploadLinkByTokenRow, nick, errMsg string, status int) {
 	s.page(w, r, status, "upload", l.FolderName, UploadPage{
 		Token: l.Token, FolderName: l.FolderName, Nickname: nick, Error: errMsg,
-		MaxFiles: s.cfg.UploadMaxFilesPerRequest, MaxSizeMB: s.cfg.UploadMaxFileSize >> 20,
+		MaxSizeMB: s.cfg.UploadMaxFileSize >> 20,
 	})
 }
 
@@ -119,86 +115,6 @@ func (s *Server) uploadClearNickname(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/upload/"+l.Token, http.StatusSeeOther)
 }
 
-// uploadImages accepts multipart uploads, streaming each file part straight to
-// disk/storage. The page's script sends one file per request so it can show
-// per-file progress; several files per request are also supported.
-func (s *Server) uploadImages(w http.ResponseWriter, r *http.Request) {
-	l, ok := s.uploadLink(w, r)
-	if !ok {
-		return
-	}
-	if !s.sameOrigin(r) {
-		s.fail(w, r, http.StatusForbidden, "err.forbidden")
-		return
-	}
-	nick := s.nickname(r)
-	if nick == "" {
-		writeJSON(w, http.StatusForbidden, []uploadResult{{Error: s.translator(r).T("err.upload.nickname_first")}})
-		return
-	}
-	release, ok := s.acquireIngestSlot(w, r)
-	if !ok {
-		return
-	}
-	defer release()
-	mt, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mt != "multipart/form-data" || params["boundary"] == "" {
-		s.fail(w, r, http.StatusBadRequest, "err.multipart")
-		return
-	}
-	// Cap the whole request; parts are also capped individually by the ingest service.
-	maxBody := int64(s.cfg.UploadMaxFilesPerRequest)*s.cfg.UploadMaxFileSize + (1 << 20)
-	start := time.Now()
-	body := &countingReader{r: http.MaxBytesReader(w, r.Body, maxBody)}
-	r.Body = body
-	mr := multipart.NewReader(r.Body, params["boundary"])
-
-	var results []uploadResult
-	status := http.StatusOK
-	// interrupted logs a request whose body broke off once, with the details
-	// that tell a dropped client connection from a proxy timeout.
-	interrupted := func(err error, file string) {
-		s.logInterrupted(r, "upload interrupted", err, start, body.n, "folder_id", l.FolderID, "file", file, "files_done", len(results))
-		status = http.StatusBadRequest
-	}
-	for {
-		part, err := mr.NextPart()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			interrupted(err, "")
-			results = append(results, uploadResult{Error: s.translator(r).T("err.upload.interrupted")})
-			break
-		}
-		if part.FormName() != "files" || part.FileName() == "" {
-			part.Close()
-			continue
-		}
-		name := domain.SafeFilename(part.FileName())
-		if len(results) >= s.cfg.UploadMaxFilesPerRequest {
-			results = append(results, uploadResult{Name: name, Error: s.translator(r).T("err.upload.too_many_files")})
-			part.Close()
-			continue
-		}
-		res := uploadResult{Name: name}
-		if _, err := s.uploads.Ingest(r.Context(), l.FolderID, nick, name, part); errors.Is(err, io.ErrUnexpectedEOF) {
-			interrupted(err, name)
-			results = append(results, uploadResult{Name: name, Error: s.translator(r).T("err.upload.interrupted")})
-			part.Close()
-			break
-		} else if err != nil {
-			res.Error = s.uploadErrorMessage(r, err, l.FolderID, name)
-		} else {
-			res.OK = true
-			s.log.Info("image uploaded", "folder_id", l.FolderID)
-		}
-		results = append(results, res)
-		part.Close()
-	}
-	writeJSON(w, status, results)
-}
-
 // acquireIngestSlot bounds the number of uploads being ingested at once so
 // parallel requests cannot fill the temp directory; excess clients get 503 and
 // retry shortly.
@@ -221,11 +137,6 @@ func (s *Server) uploadErrorMessage(r *http.Request, err error, folderID, name s
 	if msg, ok := s.errText(r, err); ok {
 		s.log.Info("upload rejected", "folder_id", folderID, "reason", err.Error())
 		return msg
-	}
-	if errors.Is(err, io.ErrUnexpectedEOF) {
-		// The client's connection dropped mid-file; not a server problem.
-		s.log.Info("upload interrupted", "folder_id", folderID)
-		return s.translator(r).T("err.upload.interrupted")
 	}
 	s.log.Error("upload failed", "folder_id", folderID, "err", err)
 	return s.translator(r).T("err.upload.failed")

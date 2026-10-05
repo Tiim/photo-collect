@@ -36,7 +36,6 @@ The container persists everything under `/data` (`photos.db`, `photos/`, `export
 | `SESSION_SECRET` | – (required, ≥32 chars) | Signs the nickname and login-state cookies |
 | `SESSION_TTL` | `720h` | Session lifetime (sliding) |
 | `UPLOAD_MAX_FILE_SIZE` | `52428800` | Bytes per file |
-| `UPLOAD_MAX_FILES_PER_REQUEST` | `50` | |
 | `UPLOAD_MAX_IMAGES_PER_FOLDER` | `5000` | |
 | `UPLOAD_MAX_PIXELS` | `60000000` | Maximum pixels (width x height) per image. Peak decode memory is about `WORKER_COUNT` x 4 bytes x pixels, i.e. ~240 MB per worker at the default |
 | `UPLOAD_MAX_CONCURRENT` | `2 x WORKER_COUNT` | Upload requests ingested at the same time; further requests get `503` with `Retry-After` and the upload page retries them |

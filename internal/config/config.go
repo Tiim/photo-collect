@@ -48,7 +48,6 @@ type Config struct {
 	SessionTTL    time.Duration
 
 	UploadMaxFileSize        int64
-	UploadMaxFilesPerRequest int
 	UploadMaxImagesPerFolder int
 	UploadMaxPixels          int64
 	UploadLinkDuration       time.Duration
@@ -110,7 +109,6 @@ func Load() (*Config, error) {
 		SessionTTL:    e.duration("SESSION_TTL", 30*24*time.Hour),
 
 		UploadMaxFileSize:        e.int64("UPLOAD_MAX_FILE_SIZE", 50<<20),
-		UploadMaxFilesPerRequest: int(e.int64("UPLOAD_MAX_FILES_PER_REQUEST", 50)),
 		UploadMaxImagesPerFolder: int(e.int64("UPLOAD_MAX_IMAGES_PER_FOLDER", 5000)),
 		UploadMaxPixels:          e.int64("UPLOAD_MAX_PIXELS", 60_000_000),
 		UploadLinkDuration:       e.duration("UPLOAD_LINK_DURATION", 7*24*time.Hour),

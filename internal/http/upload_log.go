@@ -74,10 +74,3 @@ func (c *countingReader) Read(b []byte) (int, error) {
 	c.n += int64(n)
 	return n, err
 }
-
-func (c *countingReader) Close() error {
-	if rc, ok := c.r.(io.Closer); ok {
-		return rc.Close()
-	}
-	return nil
-}
