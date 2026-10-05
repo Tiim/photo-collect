@@ -8,7 +8,7 @@
   <p>{{th "upload.uploading_as" (dict "Nickname" .Nickname)}}
     <form method="post" action="/upload/{{.Token}}/nickname/clear" class="inline"><button class="link" type="submit">{{t "upload.not_you"}}</button></form>
   </p>
-  <div id="dropzone" class="dropzone" data-url="/upload/{{.Token}}/images" data-max-files="{{.MaxFiles}}">
+  <div id="dropzone" class="dropzone" data-url="/upload/{{.Token}}/chunked">
     <p>{{t "upload.drop"}}</p>
     <p class="muted">{{t "upload.or"}}</p>
     <label class="button">{{t "upload.choose"}}<input id="file-input" type="file" multiple accept="image/*,.heic,.heif" hidden></label>

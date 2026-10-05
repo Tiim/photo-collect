@@ -122,6 +122,10 @@
   });
 
   // ---- anonymous upload ----
+  // Each file goes to a resumable upload on the server in chunks (size chosen by
+  // the server). A dropped or stalled request only costs the chunk in flight:
+  // the script waits, continues where the server stopped and gives up only after
+  // NETWORK_RETRIES failures in a row without progress.
   var zone = document.getElementById('dropzone');
   if (!zone) { return; }
   var input = document.getElementById('file-input');
@@ -135,6 +139,11 @@
   var MAX_RETRIES = 10;
   var pausedUntil = 0;
   var pumpTimer = null;
+  var NETWORK_RETRIES = 20;
+  var STALL_MS = 30000; // a chunk without upload progress for this long is retried
+  var REQUEST_MS = 120000; // start and complete requests
+  var MAX_RESTARTS = 3;
+  var waitingForNetwork = [];
 
   ['dragenter', 'dragover'].forEach(function (ev) {
     zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.add('over'); });
@@ -144,6 +153,16 @@
   });
   zone.addEventListener('drop', function (e) { add(e.dataTransfer.files); });
   input.addEventListener('change', function () { add(input.files); input.value = ''; });
+  // Back online: retry right away instead of waiting out the back-off.
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('online', function () {
+      waitingForNetwork.splice(0).forEach(function (item) {
+        clearTimeout(item.retryTimer);
+        item.retryTimer = null;
+        step(item);
+      });
+    });
+  }
 
   function add(files) {
     Array.prototype.forEach.call(files, function (file) {
@@ -157,7 +176,7 @@
       status.textContent = tr('js.waiting', 'Waiting…');
       li.appendChild(label); li.appendChild(bar); li.appendChild(status);
       list.appendChild(li);
-      queue.push({ file: file, bar: bar, status: status });
+      queue.push({ file: file, bar: bar, status: status, id: null, offset: 0, failures: 0, restarts: 0 });
     });
     pump();
   }
@@ -179,6 +198,16 @@
     pump();
   }
 
+  function showStatus(item, msg) {
+    item.status.className = 'small muted';
+    item.status.textContent = msg;
+  }
+
+  function progress(item, inFlight) {
+    var size = item.file.size || 1;
+    item.bar.value = ((item.offset + (inFlight || 0)) / size) * 100;
+  }
+
   // Seconds to wait: the server's Retry-After if it sent one, else 2, 4, 8, ... (max 60),
   // plus up to 2 s of jitter so parallel clients behind one NAT do not retry in lockstep.
   function retryDelay(header, attempt) {
@@ -196,34 +225,158 @@
     var delay = retryDelay(xhr.getResponseHeader('Retry-After'), item.attempts);
     active--;
     pausedUntil = Math.max(pausedUntil, Date.now() + delay * 1000);
-    item.bar.value = 0;
-    item.status.className = 'small muted';
-    item.status.textContent = tr('js.busy_retry', 'Server busy, retrying in {n} s…', { n: Math.ceil(delay) });
+    progress(item, 0);
+    showStatus(item, tr('js.busy_retry', 'Server busy, retrying in {n} s…', { n: Math.ceil(delay) }));
     queue.unshift(item);
     pump();
   }
 
+  // The connection failed: wait 2, 4, 8, ... (max 30) s and continue. The file
+  // keeps its slot so the other files do not run into the same outage.
+  function networkRetry(item) {
+    item.failures++;
+    if (item.failures > NETWORK_RETRIES) {
+      finish(item, false, tr('js.network_error', 'Network error'));
+      return;
+    }
+    var delay = Math.min(Math.pow(2, item.failures), 30) + Math.random() * 2;
+    progress(item, 0);
+    showStatus(item, tr('js.network_retry', 'Connection lost, retrying in {n} s…', { n: Math.ceil(delay) }));
+    waitingForNetwork.push(item);
+    item.retryTimer = setTimeout(function () {
+      item.retryTimer = null;
+      var i = waitingForNetwork.indexOf(item);
+      if (i >= 0) { waitingForNetwork.splice(i, 1); }
+      step(item);
+    }, delay * 1000);
+  }
+
+  // The server no longer knows the upload (restarted, or it was abandoned too
+  // long): send the file again from the start.
+  function restart(item) {
+    item.restarts++;
+    if (item.restarts > MAX_RESTARTS) {
+      finish(item, false, tr('js.failed', 'Upload failed ({status})', { status: 404 }));
+      return;
+    }
+    item.id = null;
+    item.offset = 0;
+    step(item);
+  }
+
+  function fail(item, xhr, res) {
+    var r = res && res.results && res.results[0];
+    if (r && r.error) { finish(item, false, r.error); }
+    else if (res && res.error) { finish(item, false, res.error); }
+    else if (xhr.status === 410) { finish(item, false, tr('js.expired', 'This upload link has expired')); }
+    else if (xhr.status === 413) { finish(item, false, tr('js.too_large', 'File is too large')); }
+    else { finish(item, false, tr('js.failed', 'Upload failed ({status})', { status: xhr.status })); }
+  }
+
+  // request sends one XHR. Rate limits and busy answers go to retryLater, lost
+  // connections (including a gateway that could not reach the server) to
+  // networkRetry; everything else to onload with the parsed JSON body, if any.
+  function request(item, opts, onload) {
+    var xhr = new XMLHttpRequest();
+    var settled = false;
+    var watchdog = null;
+    function done() {
+      if (settled) { return false; }
+      settled = true;
+      if (watchdog) { clearTimeout(watchdog); }
+      return true;
+    }
+    function lost() { if (done()) { networkRetry(item); } }
+    function arm() {
+      if (watchdog) { clearTimeout(watchdog); }
+      watchdog = setTimeout(function () { if (!settled) { xhr.abort(); lost(); } }, opts.stallMs);
+    }
+    xhr.open(opts.method, opts.url);
+    Object.keys(opts.headers || {}).forEach(function (k) { xhr.setRequestHeader(k, opts.headers[k]); });
+    if (opts.timeout) { xhr.timeout = opts.timeout; }
+    xhr.onerror = lost;
+    xhr.ontimeout = lost;
+    xhr.onabort = lost;
+    if (opts.stallMs) {
+      xhr.upload.onprogress = function (e) {
+        arm();
+        if (opts.onprogress) { opts.onprogress(e); }
+      };
+    }
+    xhr.onload = function () {
+      if (!done()) { return; }
+      if (xhr.status === 429 || xhr.status === 503) { retryLater(item, xhr); return; }
+      if (xhr.status === 0 || xhr.status === 502 || xhr.status === 504) { networkRetry(item); return; }
+      var res = null;
+      try { res = JSON.parse(xhr.responseText); } catch (e) { /* not JSON */ }
+      onload(xhr, res);
+    };
+    xhr.send(opts.body === undefined ? null : opts.body);
+    if (opts.stallMs) { arm(); }
+  }
+
   function send(item) {
     active++;
-    item.status.textContent = tr('js.uploading', 'Uploading…');
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', url);
-    xhr.upload.onprogress = function (e) {
-      if (e.lengthComputable) { item.bar.value = (e.loaded / e.total) * 100; }
-    };
-    xhr.onerror = function () { finish(item, false, tr('js.network_error', 'Network error')); };
-    xhr.onload = function () {
-      if (xhr.status === 429 || xhr.status === 503) { retryLater(item, xhr); return; }
-      var res = null;
-      try { res = JSON.parse(xhr.responseText).results[0]; } catch (e) { /* not JSON */ }
-      if (res && res.ok) { finish(item, true, tr('js.uploaded', 'Uploaded')); }
-      else if (res && res.error) { finish(item, false, res.error); }
-      else if (xhr.status === 410) { finish(item, false, tr('js.expired', 'This upload link has expired')); }
-      else if (xhr.status === 413) { finish(item, false, tr('js.too_large', 'File is too large')); }
-      else { finish(item, false, tr('js.failed', 'Upload failed ({status})', { status: xhr.status })); }
-    };
-    var fd = new FormData();
-    fd.append('files', item.file, item.file.name);
-    xhr.send(fd);
+    showStatus(item, tr('js.uploading', 'Uploading…'));
+    step(item);
+  }
+
+  function step(item) {
+    if (!item.id) { start(item); }
+    else if (item.offset < item.file.size) { putChunk(item); }
+    else { complete(item); }
+  }
+
+  function start(item) {
+    request(item, {
+      method: 'POST', url: url, timeout: REQUEST_MS,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: item.file.name, size: item.file.size }),
+    }, function (xhr, res) {
+      if (xhr.status === 201 && res && res.id) {
+        item.id = res.id;
+        item.chunk = res.chunk_size;
+        item.offset = res.offset || 0;
+        item.failures = 0;
+        step(item);
+      } else { fail(item, xhr, res); }
+    });
+  }
+
+  function putChunk(item) {
+    var end = Math.min(item.offset + item.chunk, item.file.size);
+    showStatus(item, tr('js.uploading', 'Uploading…'));
+    request(item, {
+      method: 'PUT', url: url + '/' + item.id, stallMs: STALL_MS,
+      headers: { 'Upload-Offset': String(item.offset) },
+      body: item.file.slice(item.offset, end),
+      onprogress: function (e) { progress(item, e.loaded); },
+    }, function (xhr, res) {
+      var known = res && typeof res.offset === 'number';
+      if ((xhr.status === 200 || xhr.status === 409) && known) {
+        // 409: part of an earlier attempt arrived after all; continue after it.
+        if (res.offset > item.offset) { item.failures = 0; }
+        item.offset = res.offset;
+        progress(item, 0);
+        step(item);
+      } else if (xhr.status === 404) { restart(item); }
+      else if (xhr.status === 400 && known) {
+        item.offset = res.offset;
+        networkRetry(item);
+      } else { fail(item, xhr, res); }
+    });
+  }
+
+  function complete(item) {
+    showStatus(item, tr('js.processing', 'Processing…'));
+    request(item, { method: 'POST', url: url + '/' + item.id + '/complete', timeout: REQUEST_MS }, function (xhr, res) {
+      var r = res && res.results && res.results[0];
+      if (xhr.status === 200 && r && r.ok) { finish(item, true, tr('js.uploaded', 'Uploaded')); }
+      else if (xhr.status === 409 && res && typeof res.offset === 'number') {
+        item.offset = res.offset;
+        step(item);
+      } else if (xhr.status === 404 && !r) { restart(item); }
+      else { fail(item, xhr, res); }
+    });
   }
 })();

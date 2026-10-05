@@ -174,6 +174,12 @@ func (s *Service) Ingest(ctx context.Context, folderID, nickname, filename strin
 	return &img, nil
 }
 
+// CheckCapacity reports whether the folder exists and can take another image,
+// so a chunked upload can be refused before its bytes are sent.
+func (s *Service) CheckCapacity(ctx context.Context, folderID string) error {
+	return s.checkCapacity(ctx, s.db.Q, folderID)
+}
+
 func (s *Service) checkCapacity(ctx context.Context, q *sqlc.Queries, folderID string) error {
 	if _, err := q.GetFolder(ctx, folderID); errors.Is(err, sql.ErrNoRows) {
 		return ErrFolderGone

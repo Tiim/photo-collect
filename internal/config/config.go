@@ -48,12 +48,15 @@ type Config struct {
 	SessionTTL    time.Duration
 
 	UploadMaxFileSize        int64
-	UploadMaxFilesPerRequest int
 	UploadMaxImagesPerFolder int
 	UploadMaxPixels          int64
 	UploadLinkDuration       time.Duration
 	// UploadMaxConcurrent caps simultaneous upload requests being ingested.
 	UploadMaxConcurrent int
+	// UploadChunkSize is the largest piece of a file the upload page sends per request.
+	UploadChunkSize int64
+	// UploadMaxPending caps chunked uploads that are started but not finished.
+	UploadMaxPending int
 
 	// Requests per minute; 0 disables the limit.
 	RateUploadPerIP   int
@@ -106,10 +109,11 @@ func Load() (*Config, error) {
 		SessionTTL:    e.duration("SESSION_TTL", 30*24*time.Hour),
 
 		UploadMaxFileSize:        e.int64("UPLOAD_MAX_FILE_SIZE", 50<<20),
-		UploadMaxFilesPerRequest: int(e.int64("UPLOAD_MAX_FILES_PER_REQUEST", 50)),
 		UploadMaxImagesPerFolder: int(e.int64("UPLOAD_MAX_IMAGES_PER_FOLDER", 5000)),
 		UploadMaxPixels:          e.int64("UPLOAD_MAX_PIXELS", 60_000_000),
 		UploadLinkDuration:       e.duration("UPLOAD_LINK_DURATION", 7*24*time.Hour),
+		UploadChunkSize:          e.int64("UPLOAD_CHUNK_SIZE", 512<<10),
+		UploadMaxPending:         int(e.int64("UPLOAD_MAX_PENDING", 64)),
 
 		RateUploadPerIP:   int(e.int64("RATE_UPLOAD_PER_IP", 100)),
 		RateUploadPerLink: int(e.int64("RATE_UPLOAD_PER_LINK", 300)),
@@ -184,6 +188,12 @@ func (c *Config) validate() error {
 	}
 	if c.UploadMaxConcurrent < 1 {
 		errs = append(errs, errors.New("UPLOAD_MAX_CONCURRENT must be >= 1"))
+	}
+	if c.UploadChunkSize < 64<<10 {
+		errs = append(errs, errors.New("UPLOAD_CHUNK_SIZE must be >= 65536"))
+	}
+	if c.UploadMaxPending < 1 {
+		errs = append(errs, errors.New("UPLOAD_MAX_PENDING must be >= 1"))
 	}
 	if c.ExportMaxConcurrent < 1 {
 		errs = append(errs, errors.New("EXPORT_MAX_CONCURRENT must be >= 1"))

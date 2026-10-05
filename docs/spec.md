@@ -119,7 +119,7 @@ Requirements:
 - Animated image formats should be rejected.
 - Maximum individual file size must be configurable.
 - Maximum number of images per folder must be configurable.
-- Maximum number of files per upload request should be configurable.
+- Each file is uploaded on its own, in chunks that resume after a dropped connection; the chunk size should be configurable.
 
 Initial expected scale is approximately 5,000 images per folder, with approximately 7,000–8,000 images across the largest expected deployment.
 
@@ -616,7 +616,9 @@ Representative routes could include:
 /folders/<id>/upload-link/extend
 
 /upload/<token>
-/upload/<token>/images
+/upload/<token>/chunked
+/upload/<token>/chunked/<id>
+/upload/<token>/chunked/<id>/complete
 
 /images/<id>
 /images/<id>/original
@@ -726,7 +728,8 @@ TRUSTED_PROXIES
 SESSION_SECRET
 
 UPLOAD_MAX_FILE_SIZE
-UPLOAD_MAX_FILES_PER_REQUEST
+UPLOAD_CHUNK_SIZE
+UPLOAD_MAX_PENDING
 UPLOAD_MAX_IMAGES_PER_FOLDER
 UPLOAD_MAX_PIXELS
 UPLOAD_MAX_CONCURRENT

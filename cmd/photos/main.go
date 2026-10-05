@@ -219,9 +219,21 @@ func serve(log *slog.Logger) error {
 		MaxPixels: cfg.UploadMaxPixels,
 	}, log)
 
+	// Pending chunked uploads are only kept in memory, so their scratch files
+	// are useless after a restart: use a fresh directory each time.
+	chunkDir, err := os.MkdirTemp("", "photo-collect-chunks-")
+	if err != nil {
+		return fmt.Errorf("chunked upload directory: %w", err)
+	}
+	defer os.RemoveAll(chunkDir)
+	chunks, err := uploads.NewChunks(chunkDir, cfg.UploadMaxPending, 2*time.Hour, log)
+	if err != nil {
+		return fmt.Errorf("chunked upload directory: %w", err)
+	}
+
 	srv, err := apphttp.NewServer(apphttp.Deps{
 		Config: cfg, DB: db, Store: store, Sessions: sessionMgr, Signer: signer, OIDC: oidcHandler,
-		Uploads: up, Downloads: dl, Queue: queue, Log: log,
+		Uploads: up, Chunks: chunks, Downloads: dl, Queue: queue, Log: log,
 	})
 	if err != nil {
 		return err
@@ -241,6 +253,7 @@ func serve(log *slog.Logger) error {
 	}
 	background(func() { queue.Run(ctx, cfg.WorkerCount) })
 	background(func() { dl.RunCleanup(ctx) })
+	background(func() { chunks.RunSweeper(ctx) })
 	background(func() { queue.RunSweepSchedule(ctx) })
 	background(func() {
 		t := time.NewTicker(time.Hour)

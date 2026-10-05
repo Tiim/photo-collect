@@ -2,17 +2,19 @@ package http_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"log/slog"
-	"mime/multipart"
 	nethttp "net/http"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/tiim/photo-collect/internal/config"
+	apphttp "github.com/tiim/photo-collect/internal/http"
 )
 
 // from performs a request as if it came from the given peer address.
@@ -143,60 +145,32 @@ func TestRateLimitLogNeverContainsToken(t *testing.T) {
 	}
 }
 
-// blockingBody signals when the handler first reads the request body, which
-// happens only after the ingest slot has been taken.
-type blockingBody struct {
-	io.Reader
-	reading chan struct{}
-	once    bool
-}
-
-func (b *blockingBody) Read(p []byte) (int, error) {
-	if !b.once {
-		b.once = true
-		close(b.reading)
-	}
-	return b.Reader.Read(p)
-}
-
 func TestConcurrentUploadsAreBounded(t *testing.T) {
 	e := setupWith(t, func(c *config.Config) { c.UploadMaxConcurrent = 1 }, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	token, _ := e.newLink("A")
 	rec := e.from("198.51.100.1:1", "POST", "/upload/"+token+"/nickname", strings.NewReader("nickname=Bob"), form)
 	nick := rec.Result().Cookies()[0]
 
-	// First upload: headers are sent but the body stalls, holding the only slot.
-	pr, pw := io.Pipe()
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
-	fw, _ := mw.CreateFormFile("files", "a.jpg")
-	fw.Write(jpegFile(t, 50, 50))
-	mw.Close()
-	bb := &blockingBody{Reader: pr, reading: make(chan struct{})}
-	req := httptest.NewRequest("POST", "/upload/"+token+"/images", bb)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	req.AddCookie(nick)
-	first := httptest.NewRecorder()
-	done := make(chan struct{})
-	go func() { defer close(done); e.h.ServeHTTP(first, req) }()
-	<-bb.reading
-
-	code, res := e.upload(token, nick, "b.jpg", jpegFile(t, 50, 50))
-	if code != nethttp.StatusServiceUnavailable || len(res) != 1 {
-		t.Fatalf("second upload while busy: %d %v", code, res)
-	}
-	rej := e.do("POST", "/upload/"+token+"/images", bytes.NewReader(body.Bytes()), map[string]string{"Content-Type": mw.FormDataContentType()}, nick)
-	if rej.Header().Get("Retry-After") == "" {
-		t.Error("503 needs Retry-After")
+	// The bytes of a file arrive while another upload is being processed.
+	data := jpegFile(t, 50, 50)
+	start := e.do("POST", "/upload/"+token+"/chunked", strings.NewReader(`{"name":"a.jpg","size":`+strconv.Itoa(len(data))+`}`), nil, nick)
+	var st struct{ ID string }
+	json.Unmarshal(start.Body.Bytes(), &st)
+	base := "/upload/" + token + "/chunked/" + st.ID
+	release := apphttp.HoldIngestSlots(e.srv)
+	if rec := e.do("PUT", base, bytes.NewReader(data), map[string]string{"Upload-Offset": "0"}); rec.Code != 200 {
+		t.Fatalf("chunks are accepted while busy: %d %s", rec.Code, rec.Body)
 	}
 
-	go func() { pw.Write(body.Bytes()); pw.Close() }()
-	<-done
-	if first.Code != 200 {
-		t.Fatalf("first upload: %d %s", first.Code, first.Body)
+	// Processing it has to wait for a free slot.
+	rec = e.do("POST", base+"/complete", nil, nil)
+	if rec.Code != nethttp.StatusServiceUnavailable || rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("complete while busy: %d %v %s", rec.Code, rec.Header(), rec.Body)
 	}
-	if code, res := e.upload(token, nick, "c.jpg", jpegFile(t, 50, 50)); code != 200 || res[0]["ok"] != true {
-		t.Errorf("slot not released: %d %v", code, res)
+	release()
+	rec = e.do("POST", base+"/complete", nil, nil)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"ok":true`) {
+		t.Errorf("complete after the slot is free (bytes kept): %d %s", rec.Code, rec.Body)
 	}
 }
 

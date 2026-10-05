@@ -4,9 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"io"
-	"mime"
-	"mime/multipart"
 	"net/http"
 	"time"
 
@@ -23,7 +20,6 @@ type UploadPage struct {
 	FolderName string
 	Nickname   string // empty until the visitor has chosen one
 	Error      string
-	MaxFiles   int
 	MaxSizeMB  int64
 }
 
@@ -79,7 +75,7 @@ func (s *Server) uploadPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) renderUploadPage(w http.ResponseWriter, r *http.Request, l sqlc.GetUploadLinkByTokenRow, nick, errMsg string, status int) {
 	s.page(w, r, status, "upload", l.FolderName, UploadPage{
 		Token: l.Token, FolderName: l.FolderName, Nickname: nick, Error: errMsg,
-		MaxFiles: s.cfg.UploadMaxFilesPerRequest, MaxSizeMB: s.cfg.UploadMaxFileSize >> 20,
+		MaxSizeMB: s.cfg.UploadMaxFileSize >> 20,
 	})
 }
 
@@ -119,80 +115,22 @@ func (s *Server) uploadClearNickname(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/upload/"+l.Token, http.StatusSeeOther)
 }
 
-// uploadImages accepts multipart uploads, streaming each file part straight to
-// disk/storage. The page's script sends one file per request so it can show
-// per-file progress; several files per request are also supported.
-func (s *Server) uploadImages(w http.ResponseWriter, r *http.Request) {
-	l, ok := s.uploadLink(w, r)
-	if !ok {
-		return
+// acquireIngestSlot bounds the number of uploads being ingested at once so
+// parallel requests cannot fill the temp directory; excess clients get 503 and
+// retry shortly.
+func (s *Server) acquireIngestSlot(w http.ResponseWriter, r *http.Request) (release func(), ok bool) {
+	if s.ingestSlots == nil {
+		return func() {}, true
 	}
-	if !s.sameOrigin(r) {
-		s.fail(w, r, http.StatusForbidden, "err.forbidden")
-		return
+	select {
+	case s.ingestSlots <- struct{}{}:
+		return func() { <-s.ingestSlots }, true
+	default:
+		s.log.Info("upload rejected: server busy", "route", routeLabel(r), "remote", clientip.String(r.Context()))
+		w.Header().Set("Retry-After", "5")
+		writeJSON(w, http.StatusServiceUnavailable, []uploadResult{{Error: s.translator(r).T("err.upload.busy")}})
+		return nil, false
 	}
-	nick := s.nickname(r)
-	if nick == "" {
-		writeJSON(w, http.StatusForbidden, []uploadResult{{Error: s.translator(r).T("err.upload.nickname_first")}})
-		return
-	}
-	// Bound the number of uploads being written at once so parallel requests
-	// cannot fill the temp directory; excess clients retry shortly.
-	if s.ingestSlots != nil {
-		select {
-		case s.ingestSlots <- struct{}{}:
-			defer func() { <-s.ingestSlots }()
-		default:
-			s.log.Info("upload rejected: server busy", "route", routeLabel(r), "remote", clientip.String(r.Context()))
-			w.Header().Set("Retry-After", "5")
-			writeJSON(w, http.StatusServiceUnavailable, []uploadResult{{Error: s.translator(r).T("err.upload.busy")}})
-			return
-		}
-	}
-	mt, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mt != "multipart/form-data" || params["boundary"] == "" {
-		s.fail(w, r, http.StatusBadRequest, "err.multipart")
-		return
-	}
-	// Cap the whole request; parts are also capped individually by the ingest service.
-	maxBody := int64(s.cfg.UploadMaxFilesPerRequest)*s.cfg.UploadMaxFileSize + (1 << 20)
-	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
-	mr := multipart.NewReader(r.Body, params["boundary"])
-
-	var results []uploadResult
-	status := http.StatusOK
-	for {
-		part, err := mr.NextPart()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			s.log.Warn("upload: reading multipart failed", "err", err)
-			results = append(results, uploadResult{Error: s.translator(r).T("err.upload.interrupted")})
-			status = http.StatusBadRequest
-			break
-		}
-		if part.FormName() != "files" || part.FileName() == "" {
-			part.Close()
-			continue
-		}
-		name := domain.SafeFilename(part.FileName())
-		if len(results) >= s.cfg.UploadMaxFilesPerRequest {
-			results = append(results, uploadResult{Name: name, Error: s.translator(r).T("err.upload.too_many_files")})
-			part.Close()
-			continue
-		}
-		res := uploadResult{Name: name}
-		if _, err := s.uploads.Ingest(r.Context(), l.FolderID, nick, name, part); err != nil {
-			res.Error = s.uploadErrorMessage(r, err, l.FolderID, name)
-		} else {
-			res.OK = true
-			s.log.Info("image uploaded", "folder_id", l.FolderID)
-		}
-		results = append(results, res)
-		part.Close()
-	}
-	writeJSON(w, status, results)
 }
 
 func (s *Server) uploadErrorMessage(r *http.Request, err error, folderID, name string) string {
