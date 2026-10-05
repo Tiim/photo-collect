@@ -80,12 +80,19 @@ func setupWith(t *testing.T, mutate func(*config.Config), log *slog.Logger) *env
 	}
 	dl.SetLimits(downloads.Limits{MaxConcurrent: cfg.ExportMaxConcurrent, MaxBytes: cfg.ExportMaxBytes})
 	up := uploads.New(db, store, queue, uploads.Limits{MaxFileSize: cfg.UploadMaxFileSize, MaxImagesPerFolder: cfg.UploadMaxImagesPerFolder, MaxPixels: cfg.UploadMaxPixels}, log)
+	if cfg.UploadChunkSize == 0 {
+		cfg.UploadChunkSize = 64 << 10
+	}
+	chunks, err := uploads.NewChunks(filepath.Join(dir, "chunks"), 4, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
 	go queue.Run(ctx, 2)
 
 	srv, err := apphttp.NewServer(apphttp.Deps{
 		Config: cfg, DB: db, Store: store, Sessions: sm, Signer: signer,
 		OIDC:    oidc.New(oidc.Config{}, db, sm, signer, false, log),
-		Uploads: up, Downloads: dl, Queue: queue, Log: log,
+		Uploads: up, Chunks: chunks, Downloads: dl, Queue: queue, Log: log,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -40,6 +40,7 @@ type Server struct {
 	signer    *sessions.Signer
 	oidc      *oidc.Handler
 	uploads   *uploads.Service
+	chunks    *uploads.Chunks
 	downloads *downloads.Service
 	library   *library.Service
 	queue     *jobs.Queue
@@ -63,6 +64,7 @@ type Deps struct {
 	Signer    *sessions.Signer
 	OIDC      *oidc.Handler
 	Uploads   *uploads.Service
+	Chunks    *uploads.Chunks
 	Downloads *downloads.Service
 	Queue     *jobs.Queue
 	Log       *slog.Logger
@@ -71,7 +73,7 @@ type Deps struct {
 func NewServer(d Deps) (*Server, error) {
 	s := &Server{
 		cfg: d.Config, db: d.DB, store: d.Store, sessions: d.Sessions, signer: d.Signer,
-		oidc: d.OIDC, uploads: d.Uploads, downloads: d.Downloads, library: library.New(d.DB, d.Queue), queue: d.Queue, log: d.Log,
+		oidc: d.OIDC, uploads: d.Uploads, chunks: d.Chunks, downloads: d.Downloads, library: library.New(d.DB, d.Queue), queue: d.Queue, log: d.Log,
 		secure:    strings.HasPrefix(d.Config.BaseURL, "https://"),
 		clientIPs: clientip.NewResolver(d.Config.TrustedProxies),
 
@@ -115,6 +117,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /upload/{token}/nickname", s.limited(http.HandlerFunc(s.uploadSetNickname), nickLimit...))
 	mux.Handle("POST /upload/{token}/nickname/clear", s.limited(http.HandlerFunc(s.uploadClearNickname), nickLimit...))
 	mux.Handle("POST /upload/{token}/images", s.limited(http.HandlerFunc(s.uploadImages), uploadLimit...))
+	mux.Handle("POST /upload/{token}/chunked", s.limited(http.HandlerFunc(s.chunkedStart), uploadLimit...))
+	mux.HandleFunc("PUT /upload/{token}/chunked/{id}", s.chunkedPut)
+	mux.Handle("POST /upload/{token}/chunked/{id}/complete", s.limited(http.HandlerFunc(s.chunkedComplete), uploadLimit...))
 
 	// Public clock page (photographed to calibrate camera clocks) and its time source.
 	mux.HandleFunc("GET /{$}", s.clockPage)

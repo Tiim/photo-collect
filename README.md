@@ -40,7 +40,9 @@ The container persists everything under `/data` (`photos.db`, `photos/`, `export
 | `UPLOAD_MAX_IMAGES_PER_FOLDER` | `5000` | |
 | `UPLOAD_MAX_PIXELS` | `60000000` | Maximum pixels (width x height) per image. Peak decode memory is about `WORKER_COUNT` x 4 bytes x pixels, i.e. ~240 MB per worker at the default |
 | `UPLOAD_MAX_CONCURRENT` | `2 x WORKER_COUNT` | Upload requests ingested at the same time; further requests get `503` with `Retry-After` and the upload page retries them |
-| `RATE_UPLOAD_PER_IP` / `RATE_UPLOAD_PER_LINK` | `100` / `300` | Requests per minute on the anonymous `/upload/...` routes, per client IP (IPv6: per /64) and per upload link. `0` disables the limit |
+| `UPLOAD_CHUNK_SIZE` | `1048576` | Bytes per request when the upload page sends a file. Files are uploaded in chunks that resume after a dropped connection; keep this at or below your reverse proxy's request body limit (nginx: `client_max_body_size`, default 1 MiB) |
+| `UPLOAD_MAX_PENDING` | `64` | Chunked uploads started but not yet finished (each holds up to `UPLOAD_MAX_FILE_SIZE` on local temp disk). Further starts get `503` and the upload page retries them. Abandoned uploads are discarded after 2 hours |
+| `RATE_UPLOAD_PER_IP` / `RATE_UPLOAD_PER_LINK` | `100` / `300` | Requests per minute on the anonymous `/upload/...` routes, per client IP (IPv6: per /64) and per upload link. Chunk requests of an already started upload are not counted. `0` disables the limit |
 | `RATE_AUTH_PER_IP` | `10` | Requests per minute per IP on `/auth/login` and `/auth/callback` |
 | `RATE_NICKNAME_PER_IP` | `5` | Nickname changes per minute per IP |
 | `UPLOAD_LINK_DURATION` | `168h` | Default validity of new upload links |

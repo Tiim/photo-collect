@@ -136,19 +136,11 @@ func (s *Server) uploadImages(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, []uploadResult{{Error: s.translator(r).T("err.upload.nickname_first")}})
 		return
 	}
-	// Bound the number of uploads being written at once so parallel requests
-	// cannot fill the temp directory; excess clients retry shortly.
-	if s.ingestSlots != nil {
-		select {
-		case s.ingestSlots <- struct{}{}:
-			defer func() { <-s.ingestSlots }()
-		default:
-			s.log.Info("upload rejected: server busy", "route", routeLabel(r), "remote", clientip.String(r.Context()))
-			w.Header().Set("Retry-After", "5")
-			writeJSON(w, http.StatusServiceUnavailable, []uploadResult{{Error: s.translator(r).T("err.upload.busy")}})
-			return
-		}
+	release, ok := s.acquireIngestSlot(w, r)
+	if !ok {
+		return
 	}
+	defer release()
 	mt, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mt != "multipart/form-data" || params["boundary"] == "" {
 		s.fail(w, r, http.StatusBadRequest, "err.multipart")
@@ -195,10 +187,33 @@ func (s *Server) uploadImages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status, results)
 }
 
+// acquireIngestSlot bounds the number of uploads being ingested at once so
+// parallel requests cannot fill the temp directory; excess clients get 503 and
+// retry shortly.
+func (s *Server) acquireIngestSlot(w http.ResponseWriter, r *http.Request) (release func(), ok bool) {
+	if s.ingestSlots == nil {
+		return func() {}, true
+	}
+	select {
+	case s.ingestSlots <- struct{}{}:
+		return func() { <-s.ingestSlots }, true
+	default:
+		s.log.Info("upload rejected: server busy", "route", routeLabel(r), "remote", clientip.String(r.Context()))
+		w.Header().Set("Retry-After", "5")
+		writeJSON(w, http.StatusServiceUnavailable, []uploadResult{{Error: s.translator(r).T("err.upload.busy")}})
+		return nil, false
+	}
+}
+
 func (s *Server) uploadErrorMessage(r *http.Request, err error, folderID, name string) string {
 	if msg, ok := s.errText(r, err); ok {
 		s.log.Info("upload rejected", "folder_id", folderID, "reason", err.Error())
 		return msg
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		// The client's connection dropped mid-file; not a server problem.
+		s.log.Info("upload interrupted", "folder_id", folderID)
+		return s.translator(r).T("err.upload.interrupted")
 	}
 	s.log.Error("upload failed", "folder_id", folderID, "err", err)
 	return s.translator(r).T("err.upload.failed")

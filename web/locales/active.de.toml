@@ -184,6 +184,8 @@
 "js.expired" = "Dieser Upload-Link ist abgelaufen"
 "js.too_large" = "Die Datei ist zu groß"
 "js.failed" = "Upload fehlgeschlagen ({status})"
+"js.network_retry" = "Verbindung unterbrochen, neuer Versuch in {n} s…"
+"js.processing" = "Wird verarbeitet…"
 
 "err.forbidden" = "Nicht erlaubt"
 "err.unauthorized" = "Nicht angemeldet"
