@@ -46,7 +46,11 @@ func newFixture(t *testing.T) *fixture {
 	}
 	queue := jobs.New(db, log)
 	(&jobs.Handlers{DB: db, Store: store, Processor: images.NewGoProcessor(40, 80, 1), Queue: queue, ExportDir: dir, Log: log}).Register(queue)
-	go queue.Run(ctx, 2)
+	// Stop the workers before the temp dir is removed (cleanups run last-in
+	// first-out), so a job still writing derivatives does not race RemoveAll.
+	queueDone := make(chan struct{})
+	go func() { queue.Run(ctx, 2); close(queueDone) }()
+	t.Cleanup(func() { cancel(); <-queueDone })
 
 	f, err := db.Q.CreateFolder(ctx, sqlc.CreateFolderParams{ID: domain.NewID(), Name: "party"})
 	if err != nil {

@@ -174,6 +174,19 @@ func (s *Service) Ingest(ctx context.Context, folderID, nickname, filename strin
 	return &img, nil
 }
 
+// HasImage reports whether the folder already holds a file with this SHA-256
+// (lowercase hex), so the upload page can skip sending an exact copy. Ingest
+// would hand back the existing image for it anyway.
+func (s *Service) HasImage(ctx context.Context, folderID, sha256Hex string) (bool, error) {
+	_, err := s.db.Q.GetImageBySha256InFolder(ctx, sqlc.GetImageBySha256InFolderParams{
+		FolderID: folderID, Sha256: sha256Hex,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // CheckCapacity reports whether the folder exists and can take another image,
 // so a chunked upload can be refused before its bytes are sent.
 func (s *Service) CheckCapacity(ctx context.Context, folderID string) error {

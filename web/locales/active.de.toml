@@ -178,6 +178,7 @@
 "js.waiting" = "Wartet…"
 "js.uploading" = "Wird hochgeladen…"
 "js.uploaded" = "Hochgeladen"
+"js.already_uploaded" = "Bereits hochgeladen, übersprungen"
 "js.network_error" = "Netzwerkfehler"
 "js.busy_retry" = "Server ausgelastet, neuer Versuch in {n} s…"
 "js.busy_give_up" = "Der Server ist ausgelastet, bitte versuche es später erneut"

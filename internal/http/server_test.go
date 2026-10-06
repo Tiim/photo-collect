@@ -88,7 +88,11 @@ func setupWith(t *testing.T, mutate func(*config.Config), log *slog.Logger) *env
 	if err != nil {
 		t.Fatal(err)
 	}
-	go queue.Run(ctx, 2)
+	// Stop the workers before the temp dir is removed (cleanups run last-in
+	// first-out), so a job still writing derivatives does not race RemoveAll.
+	queueDone := make(chan struct{})
+	go func() { queue.Run(ctx, 2); close(queueDone) }()
+	t.Cleanup(func() { cancel(); <-queueDone })
 
 	srv, err := apphttp.NewServer(apphttp.Deps{
 		Config: cfg, DB: db, Store: store, Sessions: sm, Signer: signer,

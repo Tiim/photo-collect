@@ -168,6 +168,11 @@ The service flags duplicate photos within a folder; it never deletes anything au
   upload time: no second image row or storage object is created, and the uploader sees a normal
   success response. This is race-safe under concurrent uploads of the same file (enforced by a
   database uniqueness constraint on folder + SHA-256, not just an application-level check).
+- To save the transfer as well, the upload page hashes files up to 25 MB in the browser (needs
+  HTTPS for `crypto.subtle`) and sends the hash with the start request. If the folder already has
+  that file, the server answers immediately and the page shows "Already uploaded, skipped" instead
+  of sending the bytes. The hash is only used for this lookup; anything that is uploaded is
+  hashed again on the server.
 - Near-duplicates (the same picture re-encoded or resized) are detected via a perceptual hash
   computed for every image and compared, within the same folder only, against every other image's
   hash. A match flags the pair for manual review; both images are kept until a person acts.
