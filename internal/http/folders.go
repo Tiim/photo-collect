@@ -81,10 +81,19 @@ func (s *Server) foldersList(w http.ResponseWriter, r *http.Request) {
 	s.page(w, r, http.StatusOK, "folders", "Folders", folders)
 }
 
-func (s *Server) folderCreate(w http.ResponseWriter, r *http.Request) {
+// folderName reads and normalizes the "name" form field, or writes a 400.
+func (s *Server) folderName(w http.ResponseWriter, r *http.Request) (string, bool) {
 	name := strings.Join(strings.Fields(r.PostFormValue("name")), " ")
 	if name == "" || len([]rune(name)) > 100 {
 		s.fail(w, r, http.StatusBadRequest, "err.folder_name")
+		return "", false
+	}
+	return name, true
+}
+
+func (s *Server) folderCreate(w http.ResponseWriter, r *http.Request) {
+	name, ok := s.folderName(w, r)
+	if !ok {
 		return
 	}
 	sess := sessionFrom(r.Context())
@@ -140,6 +149,23 @@ func (s *Server) folderShow(w http.ResponseWriter, r *http.Request) {
 	}
 	allowMapTiles(w) // the folder map loads tiles
 	s.page(w, r, http.StatusOK, "folder", f.Name, p)
+}
+
+func (s *Server) folderRename(w http.ResponseWriter, r *http.Request) {
+	f, ok := s.folder(w, r)
+	if !ok {
+		return
+	}
+	name, ok := s.folderName(w, r)
+	if !ok {
+		return
+	}
+	if err := s.db.Q.RenameFolder(r.Context(), sqlc.RenameFolderParams{Name: name, ID: f.ID}); err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	s.log.Info("folder renamed", "folder_id", f.ID, "user_id", sessionFrom(r.Context()).UserID)
+	redirect(w, r, "/folders/"+f.ID)
 }
 
 func (s *Server) folderDelete(w http.ResponseWriter, r *http.Request) {

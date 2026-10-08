@@ -402,6 +402,17 @@ func TestEndToEnd(t *testing.T) {
 		t.Fatalf("revoked link: %d", rec.Code)
 	}
 
+	// Rename: whitespace is normalized, empty names are rejected.
+	if rec := e.authed("POST", folderPath+"/rename", url.Values{"name": {"  Winter   Cup "}}); rec.Code != nethttp.StatusNoContent {
+		t.Fatalf("rename: %d", rec.Code)
+	}
+	if rec := e.authed("GET", folderPath, nil); !strings.Contains(rec.Body.String(), "<h1>Winter Cup</h1>") {
+		t.Fatal("renamed folder not shown")
+	}
+	if rec := e.authed("POST", folderPath+"/rename", url.Values{"name": {"  "}}); rec.Code != 400 {
+		t.Fatalf("empty rename: %d", rec.Code)
+	}
+
 	// Delete the folder: inaccessible immediately, storage and rows removed by the job.
 	if rec := e.authed("POST", folderPath+"/delete", nil); rec.Code != nethttp.StatusNoContent {
 		t.Fatalf("delete: %d", rec.Code)

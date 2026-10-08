@@ -17,7 +17,7 @@ h1 { font-size: 1.5rem; margin: .5rem 0 1rem; } h2 { font-size: 1.05rem; margin:
 input[type=text], input[type=number], input[type=date], select { padding:.45rem .6rem; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); font:inherit; min-width:0; }
 input.days { width: 4.5rem; } #link-url { flex:1; min-width: 12rem; }
 button, .button { padding:.45rem .8rem; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:6px; font:inherit; cursor:pointer; text-decoration:none; display:inline-block; }
-button.secondary { background:transparent; color:var(--accent); }
+button.secondary, .button.secondary { background:transparent; color:var(--accent); }
 button.danger { background:transparent; color:var(--danger); border-color:var(--danger); }
 button.link { background:none; border:none; color:var(--accent); padding:0; text-decoration:underline; }
 button.x { background:none; border:none; color:var(--muted); padding:0 .2rem; }
@@ -78,7 +78,11 @@ dl { display:grid; grid-template-columns: auto 1fr; gap:.2rem .8rem; margin:0; }
 /* folder header */
 .folder-head { display:flex; align-items:center; gap:.75rem 1.25rem; flex-wrap:wrap; margin:.5rem 0 1rem; }
 .folder-head h1 { margin:0; }
-.folder-head .head-actions { margin-left:auto; display:flex; align-items:center; gap:1rem; }
+.folder-head .head-actions { margin-left:auto; display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
+.rename summary { list-style:none; } .rename summary::-webkit-details-marker { display:none; }
+.rename[open] summary { margin-bottom:.4rem; }
+.link-action { border-top:1px solid var(--line); padding-top:.5rem; margin-top:.5rem; }
+.link-action p { margin:.25rem 0 0; }
 .panel h2 { padding-bottom:.5rem; margin-bottom:.75rem; border-bottom:1px solid var(--line); }
 .panel .row { margin:.5rem 0; }
 .panel .row input[type=text] { flex:1; }

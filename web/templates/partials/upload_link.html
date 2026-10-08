@@ -3,15 +3,23 @@
 {{if .Exists}}
   <div class="row"><input id="link-url" type="text" readonly value="{{.URL}}"><button type="button" class="secondary" data-copy="#link-url">{{t "link.copy"}}</button></div>
   <p>{{if .Expired}}{{th "link.expired_on" (dict "Date" (date .ExpiresAt))}}{{else}}{{t "link.expires" (dict "Date" (date .ExpiresAt))}}{{end}}</p>
-  <form hx-post="/folders/{{.FolderID}}/upload-link/extend" class="row">
-    <label>{{t "link.valid_for"}} <input type="number" name="days" value="{{.DefaultDays}}" min="1" max="365" class="days"> {{t "link.days_from_now"}}</label>
-    <button type="submit">{{t "link.extend"}}</button>
-  </form>
-  <div class="row">
+  {{if not .Expired}}<p><a class="button" href="{{.URL}}" target="_blank" rel="noopener">{{t "link.open"}}</a></p>{{end}}
+  <div class="link-action">
+    <form hx-post="/folders/{{.FolderID}}/upload-link/extend" class="row">
+      <label>{{t "link.valid_for"}} <input type="number" name="days" value="{{.DefaultDays}}" min="1" max="365" class="days"> {{t "link.days_from_now"}}</label>
+      <button type="submit">{{t "link.extend"}}</button>
+    </form>
+    <p class="muted small">{{t "link.extend_hint"}}</p>
+  </div>
+  <div class="link-action">
     <button type="button" class="secondary" hx-post="/folders/{{.FolderID}}/upload-link"
             hx-confirm="{{t "link.regenerate_confirm"}}">{{t "link.regenerate"}}</button>
+    <p class="muted small">{{t "link.regenerate_hint" (dict "Count" .DefaultDays)}}</p>
+  </div>
+  <div class="link-action">
     <button type="button" class="danger" hx-post="/folders/{{.FolderID}}/upload-link/revoke"
             hx-confirm="{{t "link.revoke_confirm"}}">{{t "link.revoke"}}</button>
+    <p class="muted small">{{t "link.revoke_hint"}}</p>
   </div>
 {{else}}
   <p class="muted">{{t "link.none"}}</p>

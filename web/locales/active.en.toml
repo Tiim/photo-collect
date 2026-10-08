@@ -41,6 +41,9 @@
 "folders.item" = { one = "{{.Count}} image · created {{.Date}}", other = "{{.Count}} images · created {{.Date}}" }
 
 "folder.delete" = "Delete folder"
+"folder.rename" = "Rename"
+"folder.rename_label" = "Folder name"
+"folder.rename_save" = "Save"
 "folder.delete_confirm" = "Delete this folder and all of its photos? This cannot be undone."
 "folder.upload_link" = "Upload link"
 "folder.standard_tags" = "Standard tags"
@@ -167,10 +170,14 @@
 "link.valid_for" = "Valid for"
 "link.days_from_now" = "days from now"
 "link.days" = "days"
-"link.extend" = "Extend"
-"link.regenerate" = "Regenerate"
+"link.extend" = "Extend expiry"
+"link.extend_hint" = "Keeps the same link and only changes how long it stays valid. Anyone who already has the link can keep using it."
+"link.open" = "Open upload page"
+"link.regenerate" = "Replace with a new link"
+"link.regenerate_hint" = { one = "Creates a new link, valid for {{.Count}} day. The current link stops working immediately – use this if the link reached the wrong people. Share the new link again.", other = "Creates a new link, valid for {{.Count}} days. The current link stops working immediately – use this if the link reached the wrong people. Share the new link again." }
 "link.regenerate_confirm" = "Generate a new link? The current link stops working immediately."
-"link.revoke" = "Revoke"
+"link.revoke" = "Revoke link"
+"link.revoke_hint" = "Deletes the link: nobody can upload anymore until you create a new one. Photos already uploaded are kept."
 "link.revoke_confirm" = "Revoke the upload link? Nobody will be able to upload with it anymore."
 "link.none" = "No active upload link."
 "link.create" = "Create link"
