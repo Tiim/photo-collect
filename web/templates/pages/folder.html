@@ -4,6 +4,13 @@
   <h1>{{.Folder.Name}}</h1>
   {{template "folder_counts" .Counts}}
   <div class="head-actions">
+    <details class="rename">
+      <summary class="button secondary">{{t "folder.rename"}}</summary>
+      <form hx-post="/folders/{{.Folder.ID}}/rename" class="row">
+        <input type="text" name="name" value="{{.Folder.Name}}" maxlength="100" required aria-label="{{t "folder.rename_label"}}">
+        <button type="submit">{{t "folder.rename_save"}}</button>
+      </form>
+    </details>
     <button class="danger" hx-post="/folders/{{.Folder.ID}}/delete"
             hx-confirm="{{t "folder.delete_confirm"}}">{{t "folder.delete"}}</button>
   </div>

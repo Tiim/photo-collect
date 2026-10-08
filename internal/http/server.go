@@ -142,6 +142,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /folders/{id}/images/restore", s.auth(s.trashChange(false)))
 	mux.Handle("POST /folders/{id}/images/purge", s.auth(s.trashChange(true)))
 	mux.Handle("GET /folders/{id}/trash", s.auth(s.trashShow))
+	mux.Handle("POST /folders/{id}/rename", s.auth(s.folderRename))
 	mux.Handle("POST /folders/{id}/delete", s.auth(s.folderDelete))
 	mux.Handle("POST /folders/{id}/standard-tags", s.auth(s.standardTagAdd))
 	mux.Handle("POST /folders/{id}/standard-tags/{tag}/delete", s.auth(s.standardTagRemove))

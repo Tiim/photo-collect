@@ -40,6 +40,9 @@
 "folders.item" = { one = "{{.Count}} Bild · erstellt {{.Date}}", other = "{{.Count}} Bilder · erstellt {{.Date}}" }
 
 "folder.delete" = "Ordner löschen"
+"folder.rename" = "Umbenennen"
+"folder.rename_label" = "Ordnername"
+"folder.rename_save" = "Speichern"
 "folder.delete_confirm" = "Diesen Ordner und alle seine Fotos löschen? Das kann nicht rückgängig gemacht werden."
 "folder.upload_link" = "Upload-Link"
 "folder.standard_tags" = "Standard-Tags"
@@ -166,10 +169,14 @@
 "link.valid_for" = "Gültig für"
 "link.days_from_now" = "Tage ab jetzt"
 "link.days" = "Tage"
-"link.extend" = "Verlängern"
-"link.regenerate" = "Neu erzeugen"
+"link.extend" = "Gültigkeit verlängern"
+"link.extend_hint" = "Der Link bleibt derselbe, nur das Ablaufdatum ändert sich. Wer den Link schon hat, kann ihn weiter verwenden."
+"link.open" = "Upload-Seite öffnen"
+"link.regenerate" = "Durch neuen Link ersetzen"
+"link.regenerate_hint" = { one = "Erzeugt einen neuen Link, gültig für {{.Count}} Tag. Der bisherige Link funktioniert sofort nicht mehr – sinnvoll, wenn der Link an die falschen Personen gelangt ist. Den neuen Link danach erneut teilen.", other = "Erzeugt einen neuen Link, gültig für {{.Count}} Tage. Der bisherige Link funktioniert sofort nicht mehr – sinnvoll, wenn der Link an die falschen Personen gelangt ist. Den neuen Link danach erneut teilen." }
 "link.regenerate_confirm" = "Einen neuen Link erzeugen? Der aktuelle Link funktioniert dann sofort nicht mehr."
-"link.revoke" = "Widerrufen"
+"link.revoke" = "Link widerrufen"
+"link.revoke_hint" = "Löscht den Link: Niemand kann mehr hochladen, bis du einen neuen erstellst. Bereits hochgeladene Fotos bleiben erhalten."
 "link.revoke_confirm" = "Den Upload-Link widerrufen? Niemand kann dann noch damit hochladen."
 "link.none" = "Kein aktiver Upload-Link."
 "link.create" = "Link erstellen"
