@@ -99,42 +99,6 @@ func (q *Queries) ListImageTags(ctx context.Context, imageID string) ([]Tag, err
 	return items, nil
 }
 
-const listTagsForExport = `-- name: ListTagsForExport :many
-SELECT it.image_id, t.name FROM export_images ei
-JOIN image_tags it ON it.image_id = ei.image_id
-JOIN tags t ON t.id = it.tag_id
-WHERE ei.export_id = ?
-ORDER BY it.image_id, t.name
-`
-
-type ListTagsForExportRow struct {
-	ImageID string
-	Name    string
-}
-
-func (q *Queries) ListTagsForExport(ctx context.Context, exportID string) ([]ListTagsForExportRow, error) {
-	rows, err := q.db.QueryContext(ctx, listTagsForExport, exportID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListTagsForExportRow
-	for rows.Next() {
-		var i ListTagsForExportRow
-		if err := rows.Scan(&i.ImageID, &i.Name); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listTagsForImages = `-- name: ListTagsForImages :many
 SELECT it.image_id, t.name FROM image_tags it
 JOIN tags t ON t.id = it.tag_id

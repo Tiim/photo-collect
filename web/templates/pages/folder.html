@@ -20,7 +20,6 @@
   {{template "map_card" .Gallery.Map}}
   <div class="panel"><h2>{{t "folder.upload_link"}}</h2>{{template "upload_link" .Link}}</div>
   <div class="panel"><h2>{{t "folder.standard_tags"}}</h2>{{template "standard_tags" .Tags}}</div>
-  <div class="panel"><h2>{{t "folder.downloads"}}</h2>{{template "exports" .Exports}}</div>
   {{if .Devices}}
   <div class="panel devices-card">
     <h2>{{t "folder.devices" (dict "N" (len .Devices))}}</h2>
@@ -40,6 +39,11 @@
 {{template "duplicates_panel" .Duplicates}}
 
 {{template "filter_bar" .Gallery.Filter}}
+<div id="save-status" class="save-status" role="status" hidden>
+  <progress max="1" value="0"></progress>
+  <span class="small" data-save-text></span>
+  <button type="button" class="secondary" data-save-cancel>{{t "gallery.save_cancel"}}</button>
+</div>
 <div id="gallery">{{template "gallery" .Gallery}}</div>
 {{end}}
 {{end}}

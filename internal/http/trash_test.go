@@ -128,18 +128,14 @@ func TestTrashHidesImagesEverywhere(t *testing.T) {
 	}
 
 	// Exports leave trashed images out, both "all" and explicit selections.
-	if rec := e.authed("POST", f.folderPath+"/downloads", url.Values{"all": {"1"}}); rec.Code != 200 {
-		t.Fatalf("export all: %d %s", rec.Code, rec.Body)
-	}
-	if n := e.scalar("SELECT COUNT(*) FROM export_images WHERE image_id IN (?, ?)", a, b); n != 0 {
-		t.Fatalf("export contains %d trashed images", n)
-	}
-	if n := e.scalar("SELECT COUNT(*) FROM export_images WHERE image_id = ?", c); n != 1 {
-		t.Fatalf("export lost the visible image (%d)", n)
-	}
-	e.authed("POST", f.folderPath+"/downloads", url.Values{"image": {a, c}})
-	if n := e.scalar("SELECT COUNT(*) FROM export_images WHERE image_id = ?", a); n != 0 {
-		t.Fatal("selected export includes a trashed image")
+	for _, sel := range []url.Values{{"all": {"1"}}, {"image": {a, c}}} {
+		l := e.exportList(f.folderPath+"/export.json", sel)
+		if len(l.Files) != 1 || l.Files[0].ID != c {
+			t.Fatalf("export of %v holds %+v, want only the visible image", sel, l.Files)
+		}
+		if entries := e.readZip("POST", f.folderPath+"/export.zip", sel); len(entries) != 2 {
+			t.Fatalf("ZIP of %v holds %d entries, want the visible image and its sidecar", sel, len(entries))
+		}
 	}
 
 	// No pHash backfill for trashed images.
@@ -232,7 +228,6 @@ func TestPurgeDeletesRowsAndObjectsDurably(t *testing.T) {
 	if _, err := e.db.Exec(`INSERT INTO image_duplicates (id, folder_id, image_id_a, image_id_b, distance) VALUES ('d1', ?, ?, ?, 3)`, f.folderID, min(a, b), max(a, b)); err != nil {
 		t.Fatal(err)
 	}
-	e.authed("POST", f.folderPath+"/downloads", url.Values{"image": {a}})
 
 	// Purging a photo that is not in the trash is refused (silently ignored).
 	rec := e.authed("POST", f.folderPath+"/images/purge", url.Values{"image": {a}})
@@ -251,7 +246,6 @@ func TestPurgeDeletesRowsAndObjectsDurably(t *testing.T) {
 	}
 	if e.scalar("SELECT COUNT(*) FROM images WHERE id = ?", a) != 0 ||
 		e.scalar("SELECT COUNT(*) FROM image_duplicates") != 0 ||
-		e.scalar("SELECT COUNT(*) FROM export_images WHERE image_id = ?", a) != 0 ||
 		e.scalar("SELECT COUNT(*) FROM image_tags WHERE image_id = ?", a) != 0 {
 		t.Fatal("purge left rows behind")
 	}
@@ -266,13 +260,13 @@ func TestPurgeDeletesRowsAndObjectsDurably(t *testing.T) {
 	if got := len(storedObjects(t, e.storeDir)); got >= before {
 		t.Fatalf("objects: %d before, %d after", before, got)
 	}
-	// The other image is untouched and its export can still be built.
+	// The other image is untouched and can still be exported.
 	if rec := e.authed("GET", "/images/"+b+"/original", nil); rec.Code != 200 {
 		t.Fatalf("other image original = %d", rec.Code)
 	}
-	waitFor(t, "export built", func() bool {
-		return e.scalar("SELECT COUNT(*) FROM exports WHERE status = 'ready'") == 1
-	})
+	if entries := e.readZip("GET", f.folderPath+"/export.zip?all=1", nil); len(entries) != 2 {
+		t.Fatalf("export after purge holds %d entries", len(entries))
+	}
 }
 
 func TestDuplicateResolveMovesLoserToTrash(t *testing.T) {

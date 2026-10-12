@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -355,20 +356,19 @@ func TestTrashAllMatching(t *testing.T) {
 func TestExportAllMatching(t *testing.T) {
 	e := setup(t)
 	seedFolder(t, e, gallerySeeds)
-	if got := e.authed("POST", "/folders/g1/downloads?rating_min=9&matching=1", url.Values{}).Code; got != 400 {
+	if got := e.authed("GET", "/folders/g1/export.json?rating_min=9&matching=1", nil).Code; got != 400 {
 		t.Errorf("bad filter = %d", got)
 	}
-	if got := e.authed("POST", "/folders/g1/downloads?tag=nothing&matching=1", url.Values{}).Code; got != 400 {
+	if got := e.authed("GET", "/folders/g1/export.zip?tag=nothing&matching=1", nil).Code; got != 400 {
 		t.Errorf("empty match = %d", got)
 	}
-	if rec := e.authed("POST", "/folders/g1/downloads?uploader=Ben&matching=1", url.Values{}); rec.Code != 200 {
-		t.Fatalf("export = %d %s", rec.Code, rec.Body)
+	l := e.exportList("/folders/g1/export.json?uploader=Ben&matching=1", nil)
+	var names []string
+	for _, f := range l.Files {
+		names = append(names, f.Name)
 	}
-	if n := e.scalar("SELECT COUNT(*) FROM export_images WHERE image_id IN ('c', 'd')"); n != 2 {
-		t.Errorf("export holds %d of the 2 matching images", n)
-	}
-	if n := e.scalar("SELECT COUNT(*) FROM export_images"); n != 2 {
-		t.Errorf("export holds %d images, want only the matches", n)
+	if !slices.Equal(names, []string{"c.jpg", "d.jpg"}) {
+		t.Errorf("export holds %v, want only the 2 matches", names)
 	}
 }
 

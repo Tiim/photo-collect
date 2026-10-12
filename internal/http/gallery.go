@@ -32,6 +32,7 @@ type FilterView struct {
 // GalleryView is the swappable part of the folder page: toolbar and grid.
 type GalleryView struct {
 	FolderID string
+	CSRF     string // for the download form, which is posted without htmx
 	Filter   FilterView
 	Grid     GridView
 	Matching int64 // images matching the filter
@@ -72,6 +73,7 @@ func imageOf(r sqlc.ListImagesFilteredRow) sqlc.Image {
 		CalibRefTime: r.CalibRefTime, TimeOffsetSeconds: r.TimeOffsetSeconds, Phash: r.Phash,
 		PhashAttemptedAt: r.PhashAttemptedAt, DerivativeVersion: r.DerivativeVersion, DeletedAt: r.DeletedAt,
 		DeletedBy: r.DeletedBy, GpsLat: r.GpsLat, GpsLon: r.GpsLon, GpsAttemptedAt: r.GpsAttemptedAt,
+		ExportName: r.ExportName,
 	}
 }
 
@@ -101,7 +103,7 @@ func (s *Server) filterView(ctx context.Context, folderID string, f filter.Filte
 
 func (s *Server) galleryView(ctx context.Context, folder sqlc.Folder, f filter.Filter) (GalleryView, error) {
 	folderID := folder.ID
-	g := GalleryView{FolderID: folderID}
+	g := GalleryView{FolderID: folderID, CSRF: sessionFrom(ctx).CSRFToken}
 	var err error
 	if g.Map, err = s.mapCard(ctx, folder, f); err != nil {
 		return g, err

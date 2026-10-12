@@ -35,10 +35,3 @@ SELECT it.image_id, t.name FROM image_tags it
 JOIN tags t ON t.id = it.tag_id
 WHERE it.image_id IN (sqlc.slice(image_ids))
 ORDER BY it.image_id, t.name;
-
--- name: ListTagsForExport :many
-SELECT it.image_id, t.name FROM export_images ei
-JOIN image_tags it ON it.image_id = ei.image_id
-JOIN tags t ON t.id = it.tag_id
-WHERE ei.export_id = ?
-ORDER BY it.image_id, t.name;

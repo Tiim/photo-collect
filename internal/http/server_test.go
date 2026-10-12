@@ -66,7 +66,7 @@ func setupWith(t *testing.T, mutate func(*config.Config), log *slog.Logger) *env
 	cfg := &config.Config{
 		BaseURL: "http://example.test", SessionSecret: strings.Repeat("s", 32), SessionTTL: time.Hour,
 		UploadMaxFileSize: 1 << 20, UploadMaxImagesPerFolder: 3, UploadMaxPixels: 60_000_000,
-		UploadLinkDuration: 24 * time.Hour, ThumbnailSize: 40, PreviewSize: 80, ExportTTL: time.Hour,
+		UploadLinkDuration: 24 * time.Hour, ThumbnailSize: 40, PreviewSize: 80,
 	}
 	if mutate != nil {
 		mutate(cfg)
@@ -74,12 +74,8 @@ func setupWith(t *testing.T, mutate func(*config.Config), log *slog.Logger) *env
 	signer := sessions.NewSigner(cfg.SessionSecret)
 	sm := sessions.NewManager(db, cfg.SessionTTL, false)
 	queue := jobs.New(db, log)
-	(&jobs.Handlers{DB: db, Store: store, Processor: images.NewGoProcessor(40, 80, 1), Queue: queue, ExportDir: filepath.Join(dir, "exports"), Log: log}).Register(queue)
-	dl, err := downloads.New(db, store, queue, filepath.Join(dir, "exports"), cfg.ExportTTL, log)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dl.SetLimits(downloads.Limits{MaxConcurrent: cfg.ExportMaxConcurrent, MaxBytes: cfg.ExportMaxBytes})
+	(&jobs.Handlers{DB: db, Store: store, Processor: images.NewGoProcessor(40, 80, 1), Queue: queue, Log: log}).Register(queue)
+	dl := downloads.New(db, store, log)
 	up := uploads.New(db, store, queue, uploads.Limits{MaxFileSize: cfg.UploadMaxFileSize, MaxImagesPerFolder: cfg.UploadMaxImagesPerFolder, MaxPixels: cfg.UploadMaxPixels}, log)
 	if cfg.UploadChunkSize == 0 {
 		cfg.UploadChunkSize = 64 << 10
@@ -324,18 +320,7 @@ func TestEndToEnd(t *testing.T) {
 	}
 
 	// Export everything.
-	if rec := e.authed("POST", folderPath+"/downloads", url.Values{"all": {"1"}}); rec.Code != 200 {
-		t.Fatalf("export: %d %s", rec.Code, rec.Body)
-	}
-	var exportID string
-	waitFor(t, "export", func() bool {
-		var status string
-		if err := e.db.QueryRow("SELECT id, status FROM exports").Scan(&exportID, &status); err != nil {
-			return false
-		}
-		return status == "ready"
-	})
-	zr := e.authed("GET", "/downloads/"+exportID, nil)
+	zr := e.authed("POST", folderPath+"/export.zip", url.Values{"all": {"1"}})
 	if zr.Code != 200 {
 		t.Fatalf("download: %d", zr.Code)
 	}
@@ -425,7 +410,7 @@ func TestEndToEnd(t *testing.T) {
 	}
 	waitFor(t, "folder cleanup", func() bool {
 		var n int
-		e.db.QueryRow("SELECT (SELECT COUNT(*) FROM folders) + (SELECT COUNT(*) FROM images) + (SELECT COUNT(*) FROM exports)").Scan(&n)
+		e.db.QueryRow("SELECT (SELECT COUNT(*) FROM folders) + (SELECT COUNT(*) FROM images)").Scan(&n)
 		return n == 0
 	})
 	if files, _ := filepath.Glob(filepath.Join(e.storeDir, "folders", "*")); len(files) != 0 {

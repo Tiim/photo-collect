@@ -27,7 +27,7 @@ func TestPagesRender(t *testing.T) {
 	}
 	e.db.Q.SetImageRating(ctx, sqlc.SetImageRatingParams{Rating: sqlNullInt(3), ID: img.ID})
 
-	for _, p := range []string{"/folders", "/folders/f1", "/folders/f1/images", "/folders/f1/downloads", "/images/i1", "/images/i1/tile", "/tags/suggest?name=g"} {
+	for _, p := range []string{"/folders", "/folders/f1", "/folders/f1/images", "/folders/f1/export.json?all=1", "/images/i1", "/images/i1/tile", "/tags/suggest?name=g"} {
 		rec := e.authed("GET", p, nil)
 		if rec.Code != 200 {
 			t.Errorf("GET %s: %d %s", p, rec.Code, rec.Body)

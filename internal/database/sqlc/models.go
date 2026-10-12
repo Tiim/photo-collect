@@ -8,23 +8,6 @@ import (
 	"database/sql"
 )
 
-type Export struct {
-	ID        string
-	FolderID  string
-	UserID    sql.NullString
-	Status    string
-	FileKey   sql.NullString
-	SizeBytes sql.NullInt64
-	Error     sql.NullString
-	CreatedAt string
-	ExpiresAt string
-}
-
-type ExportImage struct {
-	ExportID string
-	ImageID  string
-}
-
 type Folder struct {
 	ID        string
 	Name      string
@@ -67,6 +50,7 @@ type Image struct {
 	GpsLat            sql.NullFloat64
 	GpsLon            sql.NullFloat64
 	GpsAttemptedAt    sql.NullString
+	ExportName        sql.NullString
 }
 
 type ImageDuplicate struct {

@@ -149,9 +149,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /folders/{id}/upload-link", s.auth(s.uploadLinkCreate))
 	mux.Handle("POST /folders/{id}/upload-link/extend", s.auth(s.uploadLinkExtend))
 	mux.Handle("POST /folders/{id}/upload-link/revoke", s.auth(s.uploadLinkRevoke))
-	mux.Handle("GET /folders/{id}/downloads", s.auth(s.exportsPanel))
-	mux.Handle("POST /folders/{id}/downloads", s.auth(s.exportCreate))
-	mux.Handle("GET /downloads/{id}", s.auth(s.exportDownload))
+	// GET for the whole folder or a filter, POST for a selection (too long for a URL).
+	mux.Handle("GET /folders/{id}/export.zip", s.auth(s.exportZip))
+	mux.Handle("POST /folders/{id}/export.zip", s.auth(s.exportZip))
+	mux.Handle("GET /folders/{id}/export.json", s.auth(s.exportJSON))
+	mux.Handle("POST /folders/{id}/export.json", s.auth(s.exportJSON))
 	mux.Handle("POST /duplicates/{id}/dismiss", s.auth(s.duplicateDismiss))
 	mux.Handle("POST /duplicates/{id}/resolve", s.auth(s.duplicateResolve))
 

@@ -45,7 +45,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	queue := jobs.New(db, log)
-	(&jobs.Handlers{DB: db, Store: store, Processor: images.NewGoProcessor(40, 80, 1), Queue: queue, ExportDir: dir, Log: log}).Register(queue)
+	(&jobs.Handlers{DB: db, Store: store, Processor: images.NewGoProcessor(40, 80, 1), Queue: queue, Log: log}).Register(queue)
 	// Stop the workers before the temp dir is removed (cleanups run last-in
 	// first-out), so a job still writing derivatives does not race RemoveAll.
 	queueDone := make(chan struct{})
@@ -182,14 +182,7 @@ func TestCalibrationCorrectsSameDeviceOnly(t *testing.T) {
 	}
 
 	// Calibration shots are left out of "export everything".
-	exp, err := f.db.Q.CreateExport(f.ctx, sqlc.CreateExportParams{ID: "x", FolderID: f.folder, ExpiresAt: "9999"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := f.db.Q.AddAllFolderImagesToExport(f.ctx, sqlc.AddAllFolderImagesToExportParams{ExportID: exp.ID, FolderID: f.folder}); err != nil {
-		t.Fatal(err)
-	}
-	exported, err := f.db.Q.ListExportImages(f.ctx, exp.ID)
+	exported, err := f.db.Q.ListExportableImagesInFolder(f.ctx, f.folder)
 	if err != nil {
 		t.Fatal(err)
 	}

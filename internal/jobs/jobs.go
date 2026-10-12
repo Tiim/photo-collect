@@ -20,7 +20,6 @@ const (
 	TypeDeriveImage          = "derive_image"
 	TypeAnalyzeImage         = "analyze_image"
 	TypeDeleteFolder         = "delete_folder"
-	TypeBuildExport          = "build_export"
 	TypeScanFolderDuplicates = "scan_folder_duplicates"
 	TypeDeleteImageObjects   = "delete_image_objects"
 	TypeSweepOrphans         = "sweep_orphans"
@@ -40,9 +39,6 @@ type (
 	}
 	DeleteFolderPayload struct {
 		FolderID string `json:"folder_id"`
-	}
-	ExportPayload struct {
-		ExportID string `json:"export_id"`
 	}
 	ScanFolderDuplicatesPayload struct {
 		FolderID string `json:"folder_id"`

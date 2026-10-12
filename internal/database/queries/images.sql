@@ -99,11 +99,24 @@ WHERE i.phash IS NULL AND i.phash_attempted_at IS NULL AND i.deleted_at IS NULL
 -- name: HardDeleteImage :execrows
 DELETE FROM images WHERE id = ?;
 
--- name: ListExportImages :many
-SELECT i.* FROM export_images ei
-JOIN images i ON i.id = ei.image_id
-WHERE ei.export_id = ? AND i.deleted_at IS NULL
-ORDER BY i.seq;
+-- Images of a folder for "download all": not trashed, no calibration shots.
+-- name: ListExportableImagesInFolder :many
+SELECT * FROM images
+WHERE folder_id = ? AND deleted_at IS NULL AND is_calibration = 0
+ORDER BY seq;
+
+-- name: CountImagesMissingExportName :one
+SELECT COUNT(*) FROM images WHERE folder_id = ? AND export_name IS NULL;
+
+-- Every image row of the folder, trashed or not: names stay reserved.
+-- name: ListFolderExportNames :many
+SELECT export_name FROM images WHERE folder_id = ? AND export_name IS NOT NULL;
+
+-- name: ListImagesMissingExportName :many
+SELECT id, original_filename FROM images WHERE folder_id = ? AND export_name IS NULL ORDER BY seq;
+
+-- name: SetImageExportName :exec
+UPDATE images SET export_name = ? WHERE id = ?;
 
 -- name: MarkImageScanned :exec
 UPDATE images SET qr_scanned = 1 WHERE id = ?;

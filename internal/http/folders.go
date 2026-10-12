@@ -42,18 +42,6 @@ type LinkView struct {
 	DefaultDays int
 }
 
-type ExportRow struct {
-	sqlc.Export
-	Ready bool
-}
-
-type ExportsView struct {
-	FolderID string
-	Exports  []ExportRow
-	Active   bool // something is still being built: keep polling
-	Error    string
-}
-
 type StdTagsView struct {
 	FolderID string
 	Tags     []sqlc.Tag
@@ -63,7 +51,6 @@ type FolderPage struct {
 	Folder     sqlc.Folder
 	Tags       StdTagsView
 	Link       LinkView
-	Exports    ExportsView
 	Gallery    GalleryView
 	Counts     FolderCounts
 	Devices    []DeviceRow
@@ -132,12 +119,10 @@ func (s *Server) folderShow(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if p.Tags, err = s.stdTagsView(ctx, f.ID); err == nil {
 		if p.Link, err = s.linkView(ctx, f.ID); err == nil {
-			if p.Exports, err = s.exportsView(ctx, f.ID); err == nil {
-				if p.Gallery, err = s.galleryView(ctx, f, flt); err == nil {
-					if p.Counts, err = s.folderCounts(ctx, f.ID, false); err == nil {
-						if p.Devices, err = s.devicesView(ctx, s.translator(r), f.ID); err == nil {
-							p.Duplicates, err = s.duplicatesView(ctx, f.ID)
-						}
+			if p.Gallery, err = s.galleryView(ctx, f, flt); err == nil {
+				if p.Counts, err = s.folderCounts(ctx, f.ID, false); err == nil {
+					if p.Devices, err = s.devicesView(ctx, s.translator(r), f.ID); err == nil {
+						p.Duplicates, err = s.duplicatesView(ctx, f.ID)
 					}
 				}
 			}

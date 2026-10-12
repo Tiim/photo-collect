@@ -68,12 +68,9 @@ type Config struct {
 	PreviewSize   int
 
 	WorkerCount int
-	ExportDir   string
-	ExportTTL   time.Duration
-	// ExportMaxConcurrent is the number of ZIP exports built at the same time.
-	ExportMaxConcurrent int
-	// ExportMaxBytes refuses exports whose originals add up to more; 0 disables the limit.
-	ExportMaxBytes int64
+	// LegacyExportDir is where older versions built ZIP exports. Exports are
+	// streamed now; files left there are removed at startup.
+	LegacyExportDir string
 }
 
 // Load reads configuration from the environment and validates it.
@@ -123,12 +120,8 @@ func Load() (*Config, error) {
 		ThumbnailSize: int(e.int64("THUMBNAIL_SIZE", 400)),
 		PreviewSize:   int(e.int64("PREVIEW_SIZE", 1600)),
 
-		WorkerCount: int(e.int64("WORKER_COUNT", 2)),
-		ExportDir:   e.str("EXPORT_DIR", "/data/exports"),
-		ExportTTL:   e.duration("EXPORT_TTL", 24*time.Hour),
-
-		ExportMaxConcurrent: int(e.int64("EXPORT_MAX_CONCURRENT", 1)),
-		ExportMaxBytes:      e.int64("EXPORT_MAX_BYTES", 20<<30),
+		WorkerCount:     int(e.int64("WORKER_COUNT", 2)),
+		LegacyExportDir: e.str("EXPORT_DIR", "/data/exports"),
 	}
 	c.UploadMaxConcurrent = int(e.int64("UPLOAD_MAX_CONCURRENT", int64(2*c.WorkerCount)))
 	if v := e.str("TRUSTED_PROXIES", ""); v != "" {
@@ -194,12 +187,6 @@ func (c *Config) validate() error {
 	}
 	if c.UploadMaxPending < 1 {
 		errs = append(errs, errors.New("UPLOAD_MAX_PENDING must be >= 1"))
-	}
-	if c.ExportMaxConcurrent < 1 {
-		errs = append(errs, errors.New("EXPORT_MAX_CONCURRENT must be >= 1"))
-	}
-	if c.ExportMaxBytes < 0 {
-		errs = append(errs, errors.New("EXPORT_MAX_BYTES must be >= 0 (0 disables the limit)"))
 	}
 	return errors.Join(errs...)
 }
