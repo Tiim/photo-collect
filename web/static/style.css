@@ -39,6 +39,7 @@ button.x { background:none; border:none; color:var(--muted); padding:0 .2rem; }
 .tile .thumb { display:block; aspect-ratio: 1; background:var(--line); }
 .tile img { width:100%; height:100%; object-fit:cover; display:block; }
 .placeholder { display:flex; align-items:center; justify-content:center; height:100%; min-height:8rem; color:var(--muted); background:var(--line); text-align:center; padding:.5rem; }
+.placeholder.video { flex-direction:column; gap:.35rem; }
 .caption { display:flex; flex-direction:column; padding:.35rem .5rem; gap:.1rem; }
 .caption .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.85rem; }
 .star { color: var(--line); background:none; border:none; padding:0 .05rem; font-size:1.1rem; } .star.on { color:#f5a623; }

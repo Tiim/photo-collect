@@ -103,21 +103,26 @@ Minimal vanilla JavaScript is accepptable.
 
 ## 6. Image formats and validation
 
-The service accepts images only.
+The service accepts images and videos.
 At minimum, support:
 - JPEG
 - PNG
 - WebP
 - HEIC/HEIF
+- MP4 and MOV videos
 
 The implementation should be extensible to additional image formats.
+
+Videos are stored and exported like images (original untouched, deduplicated by SHA-256) and shown
+in the gallery as a generic video tile. They get no thumbnail, preview, playback, capture time,
+position or clock calibration.
 
 Requirements:
 - The actual file content must be validated.
 - The filename extension must not be trusted as proof that a file is an image.
 - Invalid/non-image files must be rejected.
 - Animated image formats should be rejected.
-- Maximum individual file size must be configurable.
+- Maximum individual file size must be configurable, separately for images and videos.
 - Maximum number of images per folder must be configurable.
 - Each file is uploaded on its own, in chunks that resume after a dropped connection; the chunk size should be configurable.
 
@@ -722,6 +727,7 @@ TRUSTED_PROXIES
 SESSION_SECRET
 
 UPLOAD_MAX_FILE_SIZE
+UPLOAD_MAX_VIDEO_SIZE
 UPLOAD_CHUNK_SIZE
 UPLOAD_MAX_PENDING
 UPLOAD_MAX_IMAGES_PER_FOLDER
@@ -811,7 +817,6 @@ The initial implementation does not require:
 - Anonymous image viewing.
 - Anonymous image deletion.
 - Anonymous image management.
-- Video uploads.
 - Full-text search.
 - Advanced filtering.
 - Audit logging.

@@ -215,6 +215,7 @@
     }
 
     function writeSidecar(dir, f, photoWasThere) {
+      if (!f.xmp_name) { return Promise.resolve(); } // videos have no sidecar
       return dir.getFileHandle(f.xmp_name).then(function (h) {
         return h.getFile();
       }).then(function (file) { return file.text(); }, function () { return null; }).then(function (old) {

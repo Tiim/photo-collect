@@ -12,6 +12,7 @@ import (
 	"github.com/tiim/photo-collect/internal/database"
 	"github.com/tiim/photo-collect/internal/database/sqlc"
 	"github.com/tiim/photo-collect/internal/domain"
+	"github.com/tiim/photo-collect/internal/images"
 	"github.com/tiim/photo-collect/internal/jobs"
 )
 
@@ -25,6 +26,9 @@ type TileView struct {
 }
 
 func tile(img sqlc.Image) TileView { return TileView{Image: img, RatingValue: ratingOf(img)} }
+
+// IsVideo reports whether the file is a video, which has no thumbnail or preview.
+func (t TileView) IsVideo() bool { return images.IsVideo(t.MimeType) }
 
 func ratingOf(img sqlc.Image) int {
 	if img.Rating.Valid {

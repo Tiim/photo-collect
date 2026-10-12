@@ -90,9 +90,9 @@ type exportFileJSON struct {
 	Size      int64  `json:"size"`
 	SHA256    string `json:"sha256"`
 	URL       string `json:"url"`
-	XMPName   string `json:"xmp_name"`
-	XMP       string `json:"xmp"`
-	XMPSHA256 string `json:"xmp_sha256"`
+	XMPName   string `json:"xmp_name,omitempty"` // empty for videos, which have no sidecar
+	XMP       string `json:"xmp,omitempty"`
+	XMPSHA256 string `json:"xmp_sha256,omitempty"`
 }
 
 // exportJSON lists the files of an export for "save to folder": the page
@@ -106,11 +106,13 @@ func (s *Server) exportJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	files := make([]exportFileJSON, len(exp.Files))
 	for i, f := range exp.Files {
-		sum := sha256.Sum256(f.XMP)
 		files[i] = exportFileJSON{
 			ID: f.ImageID, Name: f.Name, Size: f.Size, SHA256: f.SHA256,
-			URL:     "/images/" + f.ImageID + "/original",
-			XMPName: f.XMPName(), XMP: string(f.XMP), XMPSHA256: hex.EncodeToString(sum[:]),
+			URL: "/images/" + f.ImageID + "/original",
+		}
+		if f.XMP != nil {
+			sum := sha256.Sum256(f.XMP)
+			files[i].XMPName, files[i].XMP, files[i].XMPSHA256 = f.XMPName(), string(f.XMP), hex.EncodeToString(sum[:])
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")

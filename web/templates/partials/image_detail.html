@@ -4,7 +4,7 @@
   {{if .Prev}}<a class="navarrow prev" href="/images/{{.Prev}}" data-nav="prev" title="{{t "detail.prev_hint"}}" aria-label="{{t "detail.prev"}}">‹</a>{{end}}
   {{if .Next}}<a class="navarrow next" href="/images/{{.Next}}" data-nav="next" title="{{t "detail.next_hint"}}" aria-label="{{t "detail.next"}}">›</a>{{end}}
   <div class="preview">
-    {{if .PreviewReady}}<img src="/images/{{.ID}}/preview" alt="{{.OriginalFilename}}">{{else}}<div class="placeholder">{{t "detail.preview_pending"}}</div>{{end}}
+    {{if .PreviewReady}}<img src="/images/{{.ID}}/preview" alt="{{.OriginalFilename}}">{{else if .IsVideo}}{{template "video_placeholder"}}{{else}}<div class="placeholder">{{t "detail.preview_pending"}}</div>{{end}}
   </div>
   <div class="side">
     <h2>{{.OriginalFilename}}</h2>
@@ -19,7 +19,7 @@
       </dd>
       {{end}}
       {{if .IsCalibration}}<dt>{{t "detail.clock_photo"}}</dt><dd>{{t "detail.clock_photo_text" (dict "Time" .CalibRefTime.String)}}</dd>{{end}}
-      <dt>{{t "detail.size"}}</dt><dd>{{humanSize .SizeBytes}} · {{.Width}}×{{.Height}}</dd>
+      <dt>{{t "detail.size"}}</dt><dd>{{humanSize .SizeBytes}}{{if not .IsVideo}} · {{.Width}}×{{.Height}}{{end}}</dd>
       <dt>{{t "detail.type"}}</dt><dd>{{.MimeType}}</dd>
     </dl>
     {{with .Map}}

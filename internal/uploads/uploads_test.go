@@ -3,6 +3,7 @@ package uploads_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -58,7 +59,7 @@ func newFixture(t *testing.T) *fixture {
 	}
 	return &fixture{
 		t: t, ctx: ctx, db: db, folder: f.ID, ids: map[string]string{},
-		svc: uploads.New(db, store, queue, uploads.Limits{MaxFileSize: 10 << 20, MaxImagesPerFolder: 100, MaxPixels: 60_000_000}, log),
+		svc: uploads.New(db, store, queue, uploads.Limits{MaxFileSize: 10 << 20, MaxVideoSize: 20 << 20, MaxImagesPerFolder: 100, MaxPixels: 60_000_000}, log),
 	}
 }
 
@@ -305,4 +306,38 @@ func TestRecomputeIsScopedToFolder(t *testing.T) {
 	f.waitAnalyzed()
 	f.wantOffset("a.jpg", secs(7200))
 	f.wantOffset("z.jpg", nil)
+}
+
+// Videos have their own size limit, are recorded without dimensions or
+// metadata, and an identical re-upload is deduplicated like an image.
+func TestIngestVideo(t *testing.T) {
+	f := newFixture(t)
+	video := imagetest.Video("mp42", []string{"isom", "mp42"}, 15<<20) // over the image limit
+	f.upload("Ann", "clip.mp4", video)
+	img := f.image("clip.mp4")
+	if img.MimeType != "video/mp4" || img.Width != 0 || img.Height != 0 || img.SizeBytes != int64(len(video)) ||
+		img.DeviceKey.Valid || img.ExifTime.Valid || img.GpsLat.Valid {
+		t.Fatalf("video row: %+v", img)
+	}
+
+	again, err := f.svc.Ingest(f.ctx, f.folder, "Bob", "copy.mp4", bytes.NewReader(video))
+	if err != nil || again.ID != img.ID {
+		t.Fatalf("re-upload: %v, id %v want %s", err, again, img.ID)
+	}
+
+	tooBig := imagetest.Video("qt  ", []string{"qt  "}, 21<<20)
+	var tl *uploads.TooLargeError
+	if _, err := f.svc.Ingest(f.ctx, f.folder, "Ann", "long.mov", bytes.NewReader(tooBig)); !errors.As(err, &tl) || tl.Max != 20<<20 || !errors.Is(err, uploads.ErrTooLarge) {
+		t.Fatalf("video over its limit: %v", err)
+	}
+	// An image between the image and the video limit is still refused.
+	bigJPEG := append(imagetest.PlainJPEG(16, 16), make([]byte, 11<<20)...)
+	if _, err := f.svc.Ingest(f.ctx, f.folder, "Ann", "big.jpg", bytes.NewReader(bigJPEG)); !errors.As(err, &tl) || tl.Max != 10<<20 {
+		t.Fatalf("image over its limit: %v", err)
+	}
+	var n int
+	f.db.QueryRow("SELECT COUNT(*) FROM images").Scan(&n)
+	if n != 1 {
+		t.Fatalf("%d rows, want 1", n)
+	}
 }

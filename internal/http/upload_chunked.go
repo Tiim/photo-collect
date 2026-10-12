@@ -82,8 +82,10 @@ func (s *Server) chunkedStart(w http.ResponseWriter, r *http.Request) {
 	case req.Size <= 0:
 		reject(uploads.ErrEmptyFile)
 		return
-	case req.Size > s.cfg.UploadMaxFileSize:
-		reject(uploads.ErrTooLarge)
+	case req.Size > s.maxUploadSize():
+		// The type is only known once the bytes are in, so images between the
+		// image and the video limit are refused when the upload completes.
+		reject(&uploads.TooLargeError{Max: s.maxUploadSize()})
 		return
 	}
 	if req.SHA256 != "" {
@@ -164,7 +166,7 @@ func (s *Server) chunkedPut(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, uploads.ErrUploadNotFound):
 		writeChunkState(w, http.StatusNotFound, chunkState{Error: s.translator(r).T("err.upload.interrupted")})
 	case errors.As(err, &tooBig), errors.Is(err, uploads.ErrTooLarge):
-		writeChunkState(w, http.StatusRequestEntityTooLarge, chunkState{Offset: n, Error: s.translator(r).T("err.upload.too_large", map[string]any{"MB": s.cfg.UploadMaxFileSize >> 20})})
+		writeChunkState(w, http.StatusRequestEntityTooLarge, chunkState{Offset: n, Error: s.translator(r).T("err.upload.too_large", map[string]any{"MB": s.maxUploadSize() >> 20})})
 	default:
 		// The client resumes at the offset.
 		s.logIncompleteChunk(r, "upload chunk incomplete", err, start, counted.n,

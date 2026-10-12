@@ -211,7 +211,7 @@ func serve(log *slog.Logger) error {
 	}
 	dl := downloads.New(db, store, log)
 	up := uploads.New(db, store, queue, uploads.Limits{
-		MaxFileSize: cfg.UploadMaxFileSize, MaxImagesPerFolder: cfg.UploadMaxImagesPerFolder,
+		MaxFileSize: cfg.UploadMaxFileSize, MaxVideoSize: cfg.UploadMaxVideoSize, MaxImagesPerFolder: cfg.UploadMaxImagesPerFolder,
 		MaxPixels: cfg.UploadMaxPixels,
 	}, log)
 

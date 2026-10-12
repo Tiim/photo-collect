@@ -2,7 +2,7 @@
 {{define "trash_tile"}}<div class="tile trashed" id="tile-{{.ID}}">
   <input type="checkbox" name="image" value="{{.ID}}" form="trash-form" class="sel" aria-label="{{t "tile.select" (dict "Name" .OriginalFilename)}}">
   <div class="thumb">
-    {{if .ThumbnailReady}}<img src="/images/{{.ID}}/thumbnail" loading="lazy" alt="{{.OriginalFilename}}">{{else}}<div class="placeholder">{{t "tile.processing"}}</div>{{end}}
+    {{if .ThumbnailReady}}<img src="/images/{{.ID}}/thumbnail" loading="lazy" alt="{{.OriginalFilename}}">{{else if .IsVideo}}{{template "video_placeholder"}}{{else}}<div class="placeholder">{{t "tile.processing"}}</div>{{end}}
   </div>
   <div class="caption"><span class="name" title="{{.OriginalFilename}}">{{.OriginalFilename}}</span><span class="muted small">{{.UploaderNickname}}</span></div>
 </div>{{end}}

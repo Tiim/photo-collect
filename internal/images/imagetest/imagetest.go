@@ -229,3 +229,27 @@ func buildTIFF(cam Camera) []byte {
 	out.Write(data.Bytes())
 	return out.Bytes()
 }
+
+// Video returns a minimal ISO-BMFF video: an ftyp box with the given brands
+// (major first), a moov box and an mdat box of payload bytes. It is not
+// playable, but it is what format detection looks at.
+func Video(major string, compat []string, payload int) []byte {
+	var b bytes.Buffer
+	box := func(typ string, body []byte) {
+		binary.Write(&b, binary.BigEndian, uint32(8+len(body)))
+		b.WriteString(typ)
+		b.Write(body)
+	}
+	ftyp := []byte(major + "\x00\x00\x02\x00")
+	for _, c := range compat {
+		ftyp = append(ftyp, c...)
+	}
+	box("ftyp", ftyp)
+	box("moov", []byte("\x00\x00\x00\x08mvhd"))
+	data := make([]byte, payload)
+	for i := range data {
+		data[i] = byte(i * 7)
+	}
+	box("mdat", data)
+	return b.Bytes()
+}

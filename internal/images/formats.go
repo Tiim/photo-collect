@@ -1,4 +1,5 @@
-// Package images validates uploaded image files and generates derivatives.
+// Package images validates uploaded image and video files and generates
+// derivatives for images.
 package images
 
 import (
@@ -10,12 +11,13 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"strings"
 
 	"github.com/gen2brain/heic"
 	"golang.org/x/image/webp"
 )
 
-// Info describes a validated image.
+// Info describes a validated image or video. Videos have no dimensions (0x0).
 type Info struct {
 	MIME   string
 	Ext    string
@@ -25,9 +27,9 @@ type Info struct {
 
 // Validation errors; messages are safe to show to uploaders.
 var (
-	ErrNotAnImage    = errors.New("file is not a supported image")
+	ErrNotAnImage    = errors.New("file is not a supported image or video")
 	ErrAnimated      = errors.New("animated images are not supported")
-	ErrCorrupt       = errors.New("image file is damaged or unreadable")
+	ErrCorrupt       = errors.New("file is damaged or unreadable")
 	ErrUnsupported   = errors.New("unsupported image format")
 	ErrTooManyPixels = errors.New("image resolution is too large")
 )
@@ -42,11 +44,17 @@ type Format struct {
 	// Inspect validates the whole file and returns its dimensions. It must
 	// return ErrAnimated for animated content.
 	Inspect func(r io.ReadSeeker) (w, h int, err error)
-	// Decode fully decodes the image (used for derivative generation).
+	// Decode fully decodes the image (used for derivative generation). It is
+	// nil for videos, which get no derivatives.
 	Decode func(r io.Reader) (image.Image, error)
 }
 
-var formats = []Format{jpegFormat, pngFormat, webpFormat, heicFormat}
+// Video formats must come after HEIC: both are ISO-BMFF files.
+var formats = []Format{jpegFormat, pngFormat, webpFormat, heicFormat, mp4Format, movFormat}
+
+// IsVideo reports whether mime is a video type. Videos are stored and exported
+// like images but are never decoded.
+func IsVideo(mime string) bool { return strings.HasPrefix(mime, "video/") }
 
 const headSize = 64
 
@@ -68,6 +76,9 @@ func Inspect(r io.ReadSeeker, maxPixels int64) (Info, error) {
 			return Info{}, err
 		}
 		return Info{}, fmt.Errorf("%w: %v", ErrCorrupt, err)
+	}
+	if IsVideo(f.MIME) {
+		return Info{MIME: f.MIME, Ext: f.Ext}, nil
 	}
 	if w > 0 && h > 0 && int64(w)*int64(h) > maxPixels {
 		return Info{}, fmt.Errorf("%w: %dx%d", ErrTooManyPixels, w, h)
@@ -96,10 +107,11 @@ func detect(r io.ReadSeeker) (*Format, error) {
 	return nil, ErrNotAnImage
 }
 
-// FormatForMIME returns the format registered for mime.
+// FormatForMIME returns the image format registered for mime. Videos cannot
+// be decoded and give ErrUnsupported.
 func FormatForMIME(mime string) (*Format, error) {
 	for i := range formats {
-		if formats[i].MIME == mime {
+		if formats[i].MIME == mime && formats[i].Decode != nil {
 			return &formats[i], nil
 		}
 	}
@@ -229,8 +241,10 @@ var heicFormat = Format{
 		if heicBrands[major] || heifSequenceBrands[major] {
 			return true
 		}
+		// Sequence brands are matched too, so image sequences are rejected
+		// as animated instead of being taken for videos.
 		for _, c := range compat {
-			if heicBrands[c] {
+			if heicBrands[c] || heifSequenceBrands[c] {
 				return true
 			}
 		}
@@ -255,4 +269,91 @@ var heicFormat = Format{
 		return cfg.Width, cfg.Height, err
 	},
 	Decode: func(r io.Reader) (image.Image, error) { return heic.Decode(r) },
+}
+
+// ---- MP4 / MOV ----
+
+// mp4Brands are the ftyp brands of MP4 video as written by phones and cameras.
+var mp4Brands = map[string]bool{
+	"isom": true, "iso2": true, "iso4": true, "iso5": true, "iso6": true,
+	"mp41": true, "mp42": true, "avc1": true, "M4V ": true, "M4VH": true, "M4VP": true, "mmp4": true,
+}
+
+// isVideoFtyp reports whether the ftyp box in h names one of brands as major
+// brand and no HEIF brand at all (those are images, see heicFormat).
+func isVideoFtyp(h []byte, brands map[string]bool) bool {
+	major, compat, ok := ftypBrands(h)
+	if !ok || !brands[major] {
+		return false
+	}
+	for _, c := range append(compat, major) {
+		if heicBrands[c] || heifSequenceBrands[c] {
+			return false
+		}
+	}
+	return true
+}
+
+var mp4Format = Format{
+	MIME:    "video/mp4",
+	Ext:     ".mp4",
+	Match:   func(h []byte) bool { return isVideoFtyp(h, mp4Brands) },
+	Inspect: inspectVideo,
+}
+
+var movFormat = Format{
+	MIME:    "video/quicktime",
+	Ext:     ".mov",
+	Match:   func(h []byte) bool { return isVideoFtyp(h, map[string]bool{"qt  ": true}) },
+	Inspect: inspectVideo,
+}
+
+// inspectVideo walks the top-level boxes of an ISO-BMFF file and requires a
+// moov box (the movie header), so truncated or bogus files are rejected. Only
+// box headers are read. Dimensions are not determined.
+func inspectVideo(r io.ReadSeeker) (int, int, error) {
+	end, err := r.Seek(0, io.SeekEnd)
+	if err != nil {
+		return 0, 0, err
+	}
+	var off int64
+	hasMoov := false
+	var hdr [16]byte
+	for off < end {
+		if _, err := r.Seek(off, io.SeekStart); err != nil {
+			return 0, 0, err
+		}
+		if _, err := io.ReadFull(r, hdr[:8]); err != nil {
+			return 0, 0, fmt.Errorf("box header at %d: %w", off, err)
+		}
+		size := int64(binary.BigEndian.Uint32(hdr[0:4]))
+		typ := string(hdr[4:8])
+		switch size {
+		case 0: // box extends to the end of the file
+			size = end - off
+		case 1: // 64-bit size follows the type
+			if _, err := io.ReadFull(r, hdr[8:16]); err != nil {
+				return 0, 0, fmt.Errorf("box header at %d: %w", off, err)
+			}
+			size = int64(binary.BigEndian.Uint64(hdr[8:16]))
+			if size < 16 {
+				return 0, 0, fmt.Errorf("box %q at %d: invalid size %d", typ, off, size)
+			}
+		default:
+			if size < 8 {
+				return 0, 0, fmt.Errorf("box %q at %d: invalid size %d", typ, off, size)
+			}
+		}
+		if size > end-off {
+			return 0, 0, fmt.Errorf("box %q at %d: truncated", typ, off)
+		}
+		if typ == "moov" {
+			hasMoov = true
+		}
+		off += size
+	}
+	if !hasMoov {
+		return 0, 0, errors.New("no moov box")
+	}
+	return 0, 0, nil
 }
