@@ -1,7 +1,7 @@
 name: Release
 
-# Manual only: Actions → Release → Run workflow. Computes the next version from the
-# Conventional Commits since the last tag, creates the tag and GitHub release, then
+# Manual only: Actions → Release → Run workflow. Runs the tests, computes the next version
+# from the Conventional Commits since the last tag, creates the tag and GitHub release, then
 # builds the Docker image for it.
 on:
   workflow_dispatch:
@@ -12,8 +12,12 @@ on:
         default: false
 
 jobs:
-  release:
+  test:
     if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/test.yml
+
+  release:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write
