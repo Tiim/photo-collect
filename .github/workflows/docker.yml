@@ -3,8 +3,13 @@ name: Docker
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
+  workflow_call:
+    inputs:
+      version:
+        description: "Release version (without the v prefix)"
+        type: string
+        required: true
 
 env:
   REGISTRY: ghcr.io
@@ -35,8 +40,8 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=edge,branch=main
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
             type=sha
 
       - uses: docker/build-push-action@v6

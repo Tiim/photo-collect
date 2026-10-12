@@ -16,6 +16,11 @@ This pulls the prebuilt image `ghcr.io/tiim/photo-collect` (tags: `edge` = lates
 `X.Y.Z` / `X.Y` for releases, `sha-<commit>`). To build from source instead, swap the
 `image:` line for `build: .` in the compose file and run `up --build`.
 
+Releases are cut by hand: **Actions → Release → Run workflow** (on `main`). Once the tests pass, the next version is
+computed from the Conventional Commits since the last tag (`feat` → minor, `fix` → patch; while on
+0.x a breaking change bumps the minor), then the tag, GitHub release and Docker image are created.
+Tick "dry run" to only see the version it would pick.
+
 The container persists everything under `/data` (`photos.db`, `photos/`).
 
 ### Configuration (environment variables)
