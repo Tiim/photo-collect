@@ -1,0 +1,49 @@
+name: Release
+
+# Manual only: Actions → Release → Run workflow. Computes the next version from the
+# Conventional Commits since the last tag, creates the tag and GitHub release, then
+# builds the Docker image for it.
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Only compute the next version, do not release"
+        type: boolean
+        default: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.semrel.outputs.version }}
+    steps:
+      - id: semrel
+        uses: go-semantic-release/action@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Stay on 0.x: breaking changes bump the minor version instead of going to 1.0.0.
+          allow-initial-development-versions: true
+          dry: ${{ inputs.dry-run }}
+
+      - name: Summary
+        run: |
+          if [ -z "${{ steps.semrel.outputs.version }}" ]; then
+            echo "No releasable changes since the last tag." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Version: v${{ steps.semrel.outputs.version }}${{ inputs.dry-run && ' (dry run)' || '' }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # A tag created with GITHUB_TOKEN does not trigger other workflows, so the image is
+  # built by calling the Docker workflow directly.
+  docker:
+    needs: release
+    if: needs.release.outputs.version != '' && !inputs.dry-run
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker.yml
+    with:
+      version: ${{ needs.release.outputs.version }}
