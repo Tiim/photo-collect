@@ -13,7 +13,6 @@ RUN addgroup -g 65532 -S photos \
 COPY --from=build /out/photos /photos
 ENV DATABASE_PATH=/data/photos.db \
     STORAGE_PATH=/data/photos \
-    EXPORT_DIR=/data/exports \
     LISTEN_ADDR=:8080
 VOLUME /data
 EXPOSE 8080

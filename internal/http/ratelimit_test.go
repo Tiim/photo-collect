@@ -173,21 +173,3 @@ func TestConcurrentUploadsAreBounded(t *testing.T) {
 		t.Errorf("complete after the slot is free (bytes kept): %d %s", rec.Code, rec.Body)
 	}
 }
-
-func TestExportTooLargeIsRefusedWithMessage(t *testing.T) {
-	e := setupWith(t, func(c *config.Config) { c.ExportMaxBytes = 10 }, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	token, folderPath := e.newLink("A")
-	rec := e.from("198.51.100.1:1", "POST", "/upload/"+token+"/nickname", strings.NewReader("nickname=Bob"), form)
-	if code, res := e.upload(token, rec.Result().Cookies()[0], "a.jpg", jpegFile(t, 50, 50)); code != 200 || res[0]["ok"] != true {
-		t.Fatalf("upload: %d %v", code, res)
-	}
-	rec = e.authed("POST", folderPath+"/downloads", url.Values{"all": {"1"}})
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Export is too large") {
-		t.Fatalf("%d %s", rec.Code, rec.Body)
-	}
-	var n int
-	e.db.QueryRow("SELECT COUNT(*) FROM exports").Scan(&n)
-	if n != 0 {
-		t.Errorf("%d export rows created", n)
-	}
-}

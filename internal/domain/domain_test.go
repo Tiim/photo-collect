@@ -25,9 +25,13 @@ func TestSlug(t *testing.T) {
 	}
 }
 
-func TestUniqueNames(t *testing.T) {
-	got := UniqueNames([]string{"IMG_1234.jpg", "IMG_1234.jpg", "img_1234.JPG", "other.png", "IMG_1234.jpg"})
-	want := []string{"IMG_1234.jpg", "IMG_1234_2.jpg", "img_1234_3.JPG", "other.png", "IMG_1234_4.jpg"}
+func TestUniqueName(t *testing.T) {
+	used := map[string]bool{NameKey("IMG_1234_2.png"): true} // reserved earlier
+	var got []string
+	for _, n := range []string{"IMG_1234.jpg", "IMG_1234.jpg", "img_1234.JPG", "other.png", "IMG_1234.jpg"} {
+		got = append(got, UniqueName(n, used))
+	}
+	want := []string{"IMG_1234.jpg", "IMG_1234_3.jpg", "img_1234_4.JPG", "other.png", "IMG_1234_5.jpg"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("got %v want %v", got, want)
 	}

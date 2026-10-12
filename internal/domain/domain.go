@@ -140,25 +140,25 @@ func SafeFilename(name string) string {
 	return name
 }
 
-// UniqueNames makes filenames unique (case-insensitively) by adding an _N
-// suffix before the extension: IMG.jpg, IMG_2.jpg, IMG_3.jpg. Uniqueness is
-// judged on the name without extension, so that XMP sidecars (stem.xmp) of
-// IMG.jpg and IMG.png cannot collide either. The result has the same order
-// as names.
-func UniqueNames(names []string) []string {
-	used := map[string]bool{}
-	out := make([]string, len(names))
-	for i, n := range names {
-		ext := path.Ext(n)
-		stem := strings.TrimSuffix(n, ext)
-		cand := stem
-		for k := 2; used[strings.ToLower(cand)]; k++ {
-			cand = stem + "_" + strconv.Itoa(k)
-		}
-		used[strings.ToLower(cand)] = true
-		out[i] = cand + ext
+// UniqueName returns name, or name with an _N suffix before the extension if
+// that is already used (IMG.jpg, IMG_2.jpg, IMG_3.jpg), and marks the result
+// as used. Uniqueness is judged on
+// the lower-cased name without extension (see NameKey), so that XMP sidecars
+// (stem.xmp) of IMG.jpg and IMG.png cannot collide either.
+func UniqueName(name string, used map[string]bool) string {
+	ext := path.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	cand := stem
+	for k := 2; used[strings.ToLower(cand)]; k++ {
+		cand = stem + "_" + strconv.Itoa(k)
 	}
-	return out
+	used[strings.ToLower(cand)] = true
+	return cand + ext
+}
+
+// NameKey is the key under which UniqueName records name as used.
+func NameKey(name string) string {
+	return strings.ToLower(strings.TrimSuffix(name, path.Ext(name)))
 }
 
 // UserError is a validation error shown to the user. Key is the message ID of

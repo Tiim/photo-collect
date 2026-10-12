@@ -95,7 +95,7 @@ func TestGermanUI(t *testing.T) {
 	leak := regexp.MustCompile(`\b(?:nav|upload|clock|folders?|trash|dup|exports|filter|gallery|detail|tags|tile|map|rating|link|js|err|device)\.[a-z_]+\b`)
 	block := regexp.MustCompile(`(?s)<script type="application/json" id="i18n">.*?</script>`)
 	static := regexp.MustCompile(`/static/[\w./-]+`)
-	for _, p := range []string{"/folders", "/folders/f1", "/folders/f1/trash", "/folders/f1/downloads", "/images/i1", "/images/i1/tile", "/"} {
+	for _, p := range []string{"/folders", "/folders/f1", "/folders/f1/trash", "/images/i1", "/images/i1/tile", "/"} {
 		body := block.ReplaceAllString(static.ReplaceAllString(get(p), ""), "")
 		if m := leak.FindString(body); m != "" {
 			t.Errorf("GET %s: message ID %q shown instead of text", p, m)

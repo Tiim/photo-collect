@@ -121,6 +121,185 @@
     if (window.confirm(q.replace('{n}', n))) { e.detail.issueRequest(true); }
   });
 
+  // ---- export ----
+  // "Download selected" posts the form natively (the ZIP is streamed back), so
+  // an empty selection is caught here rather than answered with an error page.
+  document.addEventListener('submit', function (e) {
+    var b = e.submitter;
+    if (b && b.hasAttribute('data-need-selection') && !document.querySelectorAll('input.sel:checked').length) {
+      e.preventDefault();
+      window.alert(tr('err.select_one', 'Select at least one image'));
+    }
+  });
+
+  // "Save to folder" (File System Access API, Chrome/Edge on desktop): writes the
+  // originals and their .xmp sidecars into a folder the user picks. Export names
+  // are the same in every export, so a later run skips photos the folder already
+  // has (same size) and rewrites only sidecars whose content changed. The browser
+  // writes each file under a temporary name until it is complete, so a cancelled
+  // or interrupted run leaves no half-written photos behind.
+  var SAVE_PARALLEL = 3;
+  var saving = null; // AbortController of the running save
+  if (window.showDirectoryPicker && window.TransformStream) {
+    document.documentElement.classList.add('can-save-folder');
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-save-folder]');
+    if (b) { saveToFolder(b.getAttribute('data-save-folder')); }
+    if (saving && e.target.closest && e.target.closest('[data-save-cancel]')) { saving.abort(); }
+  });
+
+  function formatBytes(n) {
+    var units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+    var i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return (i ? n.toFixed(1) : String(n)) + ' ' + units[i];
+  }
+
+  function saveToFolder(url) {
+    var box = document.getElementById('save-status');
+    if (saving || !box) { return; }
+    var text = box.querySelector('[data-save-text]');
+    var bar = box.querySelector('progress');
+    var cancel = box.querySelector('[data-save-cancel]');
+    var ctl = new AbortController();
+    var st = { files: [], next: 0, done: 0, bytes: 0, total: 0, saved: 0, skipped: 0, xmp: 0, failed: 0 };
+    var shownAt = 0;
+
+    function show(msg) { text.textContent = msg; }
+    function update(force) {
+      var now = Date.now();
+      if (!force && now - shownAt < 250) { return; }
+      shownAt = now;
+      bar.max = st.total || 1;
+      bar.value = st.bytes;
+      show(tr('js.save_progress', '{n} of {m} files · {done} of {total}', {
+        n: st.done, m: st.files.length, done: formatBytes(st.bytes), total: formatBytes(st.total),
+      }));
+    }
+    function fetchOK(u) {
+      return fetch(u, { credentials: 'same-origin', signal: ctl.signal }).then(function (res) {
+        // A redirect means the session ended (sign-in page).
+        if (!res.ok || res.redirected) {
+          return res.text().then(function (t) { throw new Error(res.redirected ? String(res.status) : (t || String(res.status))); });
+        }
+        return res;
+      });
+    }
+
+    // download writes one original. The size is checked before the file is
+    // committed: an incomplete transfer is discarded, not kept under its name.
+    function download(dir, f) {
+      var written = 0;
+      return fetchOK(f.url).then(function (res) {
+        return dir.getFileHandle(f.name, { create: true }).then(function (h) {
+          return h.createWritable();
+        }).then(function (out) {
+          var count = new TransformStream({
+            transform: function (chunk, c) {
+              written += chunk.byteLength;
+              st.bytes += chunk.byteLength;
+              update();
+              c.enqueue(chunk);
+            },
+            flush: function (c) {
+              if (written !== f.size) { c.error(new Error(f.name + ': ' + written + ' of ' + f.size + ' bytes')); }
+            },
+          });
+          return res.body.pipeThrough(count).pipeTo(out, { signal: ctl.signal });
+        });
+      }).then(null, function (err) {
+        st.bytes -= written;
+        throw err;
+      });
+    }
+
+    function writeSidecar(dir, f, photoWasThere) {
+      return dir.getFileHandle(f.xmp_name).then(function (h) {
+        return h.getFile();
+      }).then(function (file) { return file.text(); }, function () { return null; }).then(function (old) {
+        if (old === f.xmp) { return; }
+        return dir.getFileHandle(f.xmp_name, { create: true }).then(function (h) {
+          return h.createWritable();
+        }).then(function (out) {
+          return out.write(f.xmp).then(function () { return out.close(); });
+        }).then(function () {
+          if (photoWasThere) { st.xmp++; }
+        });
+      });
+    }
+
+    function saveFile(dir, f) {
+      return dir.getFileHandle(f.name).then(function (h) {
+        return h.getFile();
+      }).then(function (file) { return file.size; }, function () { return -1; }).then(function (size) {
+        if (size === f.size) {
+          st.skipped++;
+          st.bytes += f.size;
+          return writeSidecar(dir, f, true);
+        }
+        return download(dir, f).then(function () {
+          st.saved++;
+          return writeSidecar(dir, f, false);
+        }, function (err) {
+          // The browser discards the data but keeps the (empty) file it created.
+          if (size < 0) { dir.removeEntry(f.name).then(null, function () {}); }
+          throw err;
+        });
+      });
+    }
+
+    function worker(dir) {
+      if (ctl.signal.aborted || st.next >= st.files.length) { return Promise.resolve(); }
+      var f = st.files[st.next++];
+      return saveFile(dir, f).then(null, function () {
+        if (!ctl.signal.aborted) { st.failed++; }
+      }).then(function () {
+        if (!ctl.signal.aborted) { st.done++; }
+        update();
+        return worker(dir);
+      });
+    }
+
+    window.showDirectoryPicker({ id: 'photo-collect-export', mode: 'readwrite' }).then(function (root) {
+      saving = ctl;
+      box.hidden = false;
+      cancel.hidden = false;
+      bar.removeAttribute('value'); // indeterminate while the list loads
+      show(tr('js.save_listing', 'Preparing the file list…'));
+      return fetchOK(url).then(function (res) { return res.json(); }).then(function (list) {
+        st.files = list.files;
+        st.files.forEach(function (f) { st.total += f.size; });
+        return root.getDirectoryHandle(list.dir, { create: true });
+      }).then(function (dir) {
+        update(true);
+        var workers = [];
+        for (var i = 0; i < SAVE_PARALLEL; i++) { workers.push(worker(dir)); }
+        return Promise.all(workers);
+      }).then(function () {
+        update(true);
+        if (ctl.signal.aborted) {
+          show(tr('js.save_cancelled', 'Cancelled. Run it again to continue where it stopped.'));
+          return;
+        }
+        var msg = tr('js.save_done', 'Done: {saved} photos saved, {skipped} already there, {xmp} sidecars updated.',
+          { saved: st.saved, skipped: st.skipped, xmp: st.xmp });
+        if (st.failed) { msg += ' ' + tr('js.save_failed', '{n} files could not be saved. Run it again to retry them.', { n: st.failed }); }
+        show(msg);
+      });
+    }).then(null, function (err) {
+      if (!saving) { return; } // the folder picker was dismissed
+      if (ctl.signal.aborted) {
+        show(tr('js.save_cancelled', 'Cancelled. Run it again to continue where it stopped.'));
+      } else {
+        show(tr('js.save_error', 'Saving to the folder failed: {msg}', { msg: (err && err.message) || String(err) }));
+      }
+    }).then(function () {
+      saving = null;
+      cancel.hidden = true;
+    });
+  }
+
   // ---- anonymous upload ----
   // Each file goes to a resumable upload on the server in chunks (size chosen by
   // the server). A dropped or stalled request only costs the chunk in flight:

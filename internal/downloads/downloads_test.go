@@ -1,14 +1,15 @@
 package downloads
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
+	"database/sql"
+	"fmt"
 	"io"
 	"log/slog"
 	"path/filepath"
-	"sync"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,31 +23,15 @@ import (
 	"github.com/tiim/photo-collect/internal/uploads"
 )
 
-// gateStore blocks reads of originals until released, so a build stays "running".
-type gateStore struct {
-	storage.Store
-	started chan struct{}
-	release chan struct{}
-	once    sync.Once
-}
-
-func (g *gateStore) Get(ctx context.Context, key string) (io.ReadCloser, error) {
-	g.once.Do(func() { close(g.started) })
-	select {
-	case <-g.release:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-	return g.Store.Get(ctx, key)
-}
-
 type fixture struct {
+	t      *testing.T
 	ctx    context.Context
 	db     *database.DB
+	store  storage.Store
 	svc    *Service
-	queue  *jobs.Queue
-	gate   *gateStore
+	up     *uploads.Service
 	folder string
+	data   map[string][]byte // image ID -> original bytes
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -64,121 +49,191 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gate := &gateStore{Store: fs, started: make(chan struct{}), release: make(chan struct{})}
-	queue := jobs.New(db, log)
-	svc, err := New(db, gate, queue, filepath.Join(dir, "exports"), time.Hour, log)
-	if err != nil {
-		t.Fatal(err)
-	}
 	folder, err := db.Q.CreateFolder(ctx, sqlc.CreateFolderParams{ID: domain.NewID(), Name: "party"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	up := uploads.New(db, fs, queue, uploads.Limits{MaxFileSize: 10 << 20, MaxImagesPerFolder: 100, MaxPixels: 60_000_000}, log)
-	for _, n := range []string{"a.jpg", "b.jpg"} {
-		if _, err := up.Ingest(ctx, folder.ID, "anna", n, bytes.NewReader(imagetest.PlainJPEG(60, 40))); err != nil {
+	up := uploads.New(db, fs, jobs.New(db, log), uploads.Limits{MaxFileSize: 10 << 20, MaxImagesPerFolder: 100, MaxPixels: 60_000_000}, log)
+	return &fixture{t: t, ctx: ctx, db: db, store: fs, svc: New(db, fs, log), up: up, folder: folder.ID, data: map[string][]byte{}}
+}
+
+// upload stores a distinct JPEG under the given file name and returns its ID.
+func (f *fixture) upload(name string) string {
+	f.t.Helper()
+	data := imagetest.PlainJPEG(60+len(f.data), 40) // distinct bytes, no duplicate skip
+	img, err := f.up.Ingest(f.ctx, f.folder, "anna", name, bytes.NewReader(data))
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	f.data[img.ID] = data
+	return img.ID
+}
+
+func (f *fixture) names(ids ...string) map[string]string {
+	f.t.Helper()
+	exp, err := f.svc.Prepare(f.ctx, f.folder, ids)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	out := map[string]string{}
+	for _, file := range exp.Files {
+		out[file.ImageID] = file.Name
+	}
+	return out
+}
+
+func TestStreamedZipHasOriginalsAndSidecars(t *testing.T) {
+	f := newFixture(t)
+	a := f.upload("a.jpg")
+	b := f.upload("a.jpg") // same name, different photo
+	if _, err := f.db.Q.SetImageRating(f.ctx, sqlc.SetImageRatingParams{Rating: sql.NullInt64{Int64: 4, Valid: true}, ID: b}); err != nil {
+		t.Fatal(err)
+	}
+	exp, err := f.svc.Prepare(f.ctx, f.folder, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := f.svc.WriteZip(f.ctx, &buf, exp); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := int64(buf.Len()), exp.ZipSize(); got != want {
+		t.Errorf("ZIP has %d bytes, ZipSize says %d", got, want)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][]byte{"party/a.jpg": f.data[a], "party/a_2.jpg": f.data[b], "party/a.xmp": nil, "party/a_2.xmp": nil}
+	if len(zr.File) != len(want) {
+		t.Errorf("%d entries, want %d", len(zr.File), len(want))
+	}
+	for _, zf := range zr.File {
+		content, ok := want[zf.Name]
+		if !ok {
+			t.Errorf("unexpected entry %s", zf.Name)
+			continue
+		}
+		rc, err := zf.Open()
+		if err != nil {
 			t.Fatal(err)
 		}
-	}
-	return &fixture{ctx: ctx, db: db, svc: svc, queue: queue, gate: gate, folder: folder.ID}
-}
-
-func (f *fixture) status(id string) string {
-	e, err := f.db.Q.GetExport(f.ctx, id)
-	if err != nil {
-		return err.Error()
-	}
-	return e.Status
-}
-
-func TestCreateRefusesTooLargeExport(t *testing.T) {
-	f := newFixture(t)
-	f.svc.SetLimits(Limits{MaxConcurrent: 1, MaxBytes: 10}) // any real JPEG is bigger
-	_, err := f.svc.Create(f.ctx, f.folder, "", nil)
-	var tl *TooLargeError
-	if !errors.As(err, &tl) {
-		t.Fatalf("err = %v, want TooLargeError", err)
-	}
-	var n int
-	f.db.QueryRow("SELECT COUNT(*) FROM exports").Scan(&n)
-	if n != 0 {
-		t.Errorf("refused export left %d rows behind", n)
-	}
-	f.svc.SetLimits(Limits{MaxConcurrent: 1, MaxBytes: 1 << 20})
-	if _, err := f.svc.Create(f.ctx, f.folder, "", nil); err != nil {
-		t.Errorf("export within the limit refused: %v", err)
-	}
-}
-
-func TestBuildRefusesTooLargeExport(t *testing.T) {
-	f := newFixture(t)
-	exp, err := f.svc.Create(f.ctx, f.folder, "", nil) // created while unlimited
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.svc.SetLimits(Limits{MaxConcurrent: 1, MaxBytes: 10}) // limit lowered afterwards
-	err = f.svc.build(f.ctx, mustJSON(t, jobs.ExportPayload{ExportID: exp.ID}))
-	if err == nil || f.status(exp.ID) != "failed" {
-		t.Fatalf("err = %v, status = %s", err, f.status(exp.ID))
-	}
-}
-
-func TestOnlyConfiguredNumberOfExportsBuildAtOnce(t *testing.T) {
-	f := newFixture(t)
-	old := busyRetry
-	busyRetry = 20 * time.Millisecond
-	t.Cleanup(func() { busyRetry = old })
-
-	f.svc.SetLimits(Limits{MaxConcurrent: 1})
-	e1, err := f.svc.Create(f.ctx, f.folder, "", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	e2, err := f.svc.Create(f.ctx, f.folder, "", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	go f.queue.Run(f.ctx, 2)
-
-	<-f.gate.started
-	// Give the second worker time to pick up the other export and be turned away.
-	waitUntil(t, "second export deferred", func() bool {
-		var attempts int
-		var status string
-		f.db.QueryRow("SELECT status, attempts FROM jobs WHERE type = ? AND payload LIKE ?", jobs.TypeBuildExport, "%"+e2.ID+"%").Scan(&status, &attempts)
-		return status == "pending" && attempts == 0 || status == "running" && attempts == 1
-	})
-	running := 0
-	for _, id := range []string{e1.ID, e2.ID} {
-		if f.status(id) == "running" {
-			running++
+		got, err := io.ReadAll(rc) // also checks the CRC
+		rc.Close()
+		if err != nil {
+			t.Fatalf("%s: %v", zf.Name, err)
+		}
+		switch {
+		case strings.HasSuffix(zf.Name, ".jpg"):
+			if zf.Method != zip.Store || !bytes.Equal(got, content) {
+				t.Errorf("%s: method %d, original not byte-identical", zf.Name, zf.Method)
+			}
+		case zf.Name == "party/a_2.xmp":
+			if !bytes.Contains(got, []byte(`xmp:Rating="4"`)) || !bytes.Contains(got, []byte("anna")) {
+				t.Errorf("sidecar of the rated photo:\n%s", got)
+			}
 		}
 	}
-	if running != 1 {
-		t.Fatalf("%d exports running with MaxConcurrent=1", running)
-	}
-
-	close(f.gate.release)
-	waitUntil(t, "both exports ready", func() bool { return f.status(e1.ID) == "ready" && f.status(e2.ID) == "ready" })
 }
 
-func waitUntil(t *testing.T, what string, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		if cond() {
-			return
+// Content-Length is announced before streaming, so ZipSize must match the
+// writer exactly, also once entries and offsets need ZIP64.
+func TestZipSizeMatchesWriter(t *testing.T) {
+	cases := map[string][]int64{"empty": {}, "small": {0, 1, 1000}}
+	// At 4 GiB - 1 only the central directory needs ZIP64, at 4 GiB the data
+	// descriptor too; the entry after it has an offset beyond 4 GiB.
+	for _, d := range []int64{-1, 0} {
+		cases[fmt.Sprintf("4 GiB %+d", d)] = []int64{5, 1<<32 + d, 7}
+	}
+	many := make([]int64, 33_000) // over 65535 entries with the sidecars
+	cases["many"] = many
+	for name, sizes := range cases {
+		t.Run(name, func(t *testing.T) {
+			exp := &Export{FolderID: "f", Dir: "Fête", Created: time.Now()}
+			store := zeroStore{sizes: map[string]int64{}}
+			for i, n := range sizes {
+				id := fmt.Sprint("img", i)
+				var xmp []byte
+				if len(sizes) < 100 { // deflate is slow under -race
+					xmp = BuildXMP(XMPData{Rating: i % 6, Tags: []string{"x"}})
+				}
+				store.sizes[storage.OriginalKey(exp.FolderID, id)] = n
+				exp.Files = append(exp.Files, File{
+					ImageID: id, Name: "IMG_" + strings.Repeat("ä", i%3) + fmt.Sprint(i) + ".jpg", Size: n,
+					Modified: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), XMP: xmp,
+				})
+			}
+			var c countWriter
+			if err := (&Service{store: store}).WriteZip(context.Background(), &c, exp); err != nil {
+				t.Fatal(err)
+			}
+			if c.n != exp.ZipSize() {
+				t.Errorf("wrote %d bytes, ZipSize = %d", c.n, exp.ZipSize())
+			}
+		})
+	}
+}
+
+// zeroStore serves originals of the given sizes (by key), all zeros.
+type zeroStore struct {
+	storage.Store // only Get is used
+	sizes         map[string]int64
+}
+
+func (z zeroStore) Get(_ context.Context, key string) (io.ReadCloser, error) {
+	n, ok := z.sizes[key]
+	if !ok {
+		return nil, storage.ErrNotFound
+	}
+	return io.NopCloser(io.LimitReader(zeros{}, n)), nil
+}
+
+type zeros struct{}
+
+func (zeros) Read(p []byte) (int, error) { clear(p); return len(p), nil }
+
+func TestExportNamesAreStable(t *testing.T) {
+	f := newFixture(t)
+	a := f.upload("IMG.jpg")
+	b := f.upload("img.png") // same name without extension, other case
+	c := f.upload("other.jpg")
+	all := f.names()
+	want := map[string]string{a: "IMG.jpg", b: "img_2.png", c: "other.jpg"}
+	for id, n := range want {
+		if all[id] != n {
+			t.Errorf("%s named %q, want %q (all: %v)", id, all[id], n, all)
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("timed out waiting for %s", what)
+	// A selection, in any order, does not rename anything.
+	if got := f.names(c, b); got[b] != "img_2.png" || got[c] != "other.jpg" || len(got) != 2 {
+		t.Errorf("selection: %v", got)
+	}
+	// New uploads and trashing never rename existing photos.
+	d := f.upload("IMG.jpg")
+	if _, err := f.db.Q.TrashImages(f.ctx, sqlc.TrashImagesParams{FolderID: f.folder, ImageIds: []string{a}, DeletedAt: sql.NullString{String: "2026-01-01", Valid: true}}); err != nil {
+		t.Fatal(err)
+	}
+	e := f.upload("IMG.jpg")
+	got := f.names()
+	if got[b] != "img_2.png" || got[c] != "other.jpg" || got[d] != "IMG_3.jpg" || got[e] != "IMG_4.jpg" {
+		t.Errorf("after uploads and trash: %v", got)
+	}
+	if _, ok := got[a]; ok {
+		t.Error("trashed photo exported")
+	}
 }
 
-func mustJSON(t *testing.T, v any) []byte {
-	t.Helper()
-	b, err := json.Marshal(v)
+func TestWriteZipRefusesOriginalOfUnexpectedSize(t *testing.T) {
+	f := newFixture(t)
+	id := f.upload("a.jpg")
+	if _, err := f.db.Exec("UPDATE images SET size_bytes = size_bytes - 1 WHERE id = ?", id); err != nil {
+		t.Fatal(err)
+	}
+	exp, err := f.svc.Prepare(f.ctx, f.folder, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return b
+	if err := f.svc.WriteZip(f.ctx, io.Discard, exp); err == nil || !strings.Contains(err.Error(), "expected") {
+		t.Errorf("err = %v", err)
+	}
 }

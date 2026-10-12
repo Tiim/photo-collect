@@ -2,11 +2,9 @@ package http
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/tiim/photo-collect/internal/domain"
-	"github.com/tiim/photo-collect/internal/downloads"
 	"github.com/tiim/photo-collect/internal/images"
 	"github.com/tiim/photo-collect/internal/library"
 	"github.com/tiim/photo-collect/internal/uploads"
@@ -48,12 +46,7 @@ func (s *Server) errText(r *http.Request, err error) (string, bool) {
 		}
 		return loc.T(ue.Key, args), true
 	}
-	var tl *downloads.TooLargeError
 	switch {
-	case errors.As(err, &tl):
-		return loc.T("err.export_too_large", map[string]any{
-			"Size": fmt.Sprintf("%.1f GiB", float64(tl.Size)/(1<<30)), "Max": fmt.Sprintf("%.1f GiB", float64(tl.Max)/(1<<30)),
-		}), true
 	case errors.Is(err, library.ErrTooMany):
 		return loc.T("err.too_many_selected", map[string]any{"Max": library.MaxBatch}), true
 	case errors.Is(err, library.ErrNothingSelected):

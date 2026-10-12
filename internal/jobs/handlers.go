@@ -10,8 +10,6 @@ import (
 	"io"
 	"log/slog"
 	"math/bits"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/tiim/photo-collect/internal/database"
@@ -27,7 +25,6 @@ type Handlers struct {
 	Store     storage.Store
 	Processor images.Processor
 	Queue     *Queue
-	ExportDir string
 	Log       *slog.Logger
 }
 
@@ -238,7 +235,7 @@ func (h *Handlers) analyzeImage(ctx context.Context, raw json.RawMessage) error 
 	})
 }
 
-// deleteFolder removes every stored object and export file of a
+// deleteFolder removes every stored object of a
 // (soft-deleted) folder and then its database rows. Retries are safe.
 func (h *Handlers) deleteFolder(ctx context.Context, raw json.RawMessage) error {
 	var p DeleteFolderPayload
@@ -270,18 +267,6 @@ func (h *Handlers) deleteFolder(ctx context.Context, raw json.RawMessage) error 
 	}
 	if failed > 0 {
 		return fmt.Errorf("%d of %d objects could not be deleted", failed, len(keys))
-	}
-
-	exports, err := h.DB.Q.ListFolderExportKeys(ctx, f.ID)
-	if err != nil {
-		return err
-	}
-	for _, e := range exports {
-		if e.FileKey.Valid {
-			if err := os.Remove(filepath.Join(h.ExportDir, filepath.Base(e.FileKey.String))); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return err
-			}
-		}
 	}
 
 	if err := h.DB.Q.HardDeleteFolder(ctx, f.ID); err != nil {

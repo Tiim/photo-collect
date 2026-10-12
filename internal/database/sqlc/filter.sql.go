@@ -158,8 +158,8 @@ func (q *Queries) ListFolderUploaders(ctx context.Context, folderID string) ([]s
 
 const listImagesFiltered = `-- name: ListImagesFiltered :many
 
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at, sort_key, is_desc FROM (
-  SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds, i.phash, i.phash_attempted_at, i.derivative_version, i.deleted_at, i.deleted_by, i.gps_lat, i.gps_lon, i.gps_attempted_at, CASE CAST(?1 AS TEXT)
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at, export_name, sort_key, is_desc FROM (
+  SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds, i.phash, i.phash_attempted_at, i.derivative_version, i.deleted_at, i.deleted_by, i.gps_lat, i.gps_lon, i.gps_attempted_at, i.export_name, CASE CAST(?1 AS TEXT)
       WHEN 'captured' THEN COALESCE(datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))), '')
       WHEN 'rating' THEN printf('%03d', COALESCE(i.rating, 0))
       ELSE printf('%020d', i.seq) END AS sort_key,
@@ -234,6 +234,7 @@ type ListImagesFilteredRow struct {
 	GpsLat            sql.NullFloat64
 	GpsLon            sql.NullFloat64
 	GpsAttemptedAt    sql.NullString
+	ExportName        sql.NullString
 	SortKey           interface{}
 	IsDesc            bool
 }
@@ -304,6 +305,7 @@ func (q *Queries) ListImagesFiltered(ctx context.Context, arg ListImagesFiltered
 			&i.GpsLat,
 			&i.GpsLon,
 			&i.GpsAttemptedAt,
+			&i.ExportName,
 			&i.SortKey,
 			&i.IsDesc,
 		); err != nil {

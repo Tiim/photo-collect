@@ -401,30 +401,19 @@ SQLite remains the canonical source for ratings/tags. XMP files are generated du
 
 ### Large downloads
 
-Download generation should be asynchronous.
-Recommended flow:
+Downloads are streamed: the ZIP (originals stored uncompressed, XMP sidecars deflated) is built
+while it is sent, with `Content-Length` computed up front. Nothing is stored on the server, so
+there is no build step, no expiry and no size limit.
 
-```text
-User selects images
-        ↓
-Create download/export job
-        ↓
-Background worker
-        ↓
-Read originals
-        ↓
-Generate XMP sidecars
-        ↓
-Create ZIP
-        ↓
-Make ZIP available
-        ↓
-Authenticated user downloads ZIP
-```
+Browsers with the File System Access API (`showDirectoryPicker`) can instead **save to a folder**:
+the page fetches the file list (`GET /folders/{id}/export.json`: name, size, SHA-256, original URL
+and sidecar content per photo), downloads each original with the session cookie and writes the
+sidecars itself. Files already present with the expected size are skipped and sidecars are
+rewritten only when their content changed, so a second run resumes an interrupted one and only
+fetches what is new.
 
-This avoids tying an HTTP request to potentially thousands of image reads.
-Temporary export files should eventually be deleted.
-The exact lifecycle/expiration of generated download archives should be configurable or clearly defined during implementation.
+Export file names are stable: each image gets its name once (the uploaded file name, made unique
+within the folder in upload order) and keeps it, whatever is selected.
 
 ## 16. Folder deletion
 
@@ -579,7 +568,7 @@ Abuse protection (a leaked link must not exhaust CPU or disk):
   routes and on nickname changes. Exceeding a limit returns `429` with `Retry-After`; the upload
   page treats this as retryable and backs off.
 - A cap on upload requests ingested concurrently (`503` with `Retry-After` beyond it).
-- ZIP exports: a cap on concurrent builds and on the total size of the originals per export.
+- ZIP exports are streamed and use no server disk, so they need no cap.
 - No per-folder or per-nickname byte quotas.
 
 ## 22. HTTP architecture

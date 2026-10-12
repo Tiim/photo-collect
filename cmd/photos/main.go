@@ -202,18 +202,14 @@ func serve(log *slog.Logger) error {
 
 	queue := jobs.New(db, log)
 	processor := images.NewGoProcessor(cfg.ThumbnailSize, cfg.PreviewSize, max(1, min(cfg.WorkerCount, runtime.NumCPU())))
-	(&jobs.Handlers{DB: db, Store: store, Processor: processor, Queue: queue, ExportDir: cfg.ExportDir, Log: log}).Register(queue)
+	(&jobs.Handlers{DB: db, Store: store, Processor: processor, Queue: queue, Log: log}).Register(queue)
 	if err := backfillPHashes(ctx, db, queue, log); err != nil {
 		return fmt.Errorf("backfill perceptual hashes: %w", err)
 	}
 	if err := backfillGPS(ctx, db, queue, log); err != nil {
 		return fmt.Errorf("backfill GPS positions: %w", err)
 	}
-	dl, err := downloads.New(db, store, queue, cfg.ExportDir, cfg.ExportTTL, log)
-	if err != nil {
-		return err
-	}
-	dl.SetLimits(downloads.Limits{MaxConcurrent: cfg.ExportMaxConcurrent, MaxBytes: cfg.ExportMaxBytes})
+	dl := downloads.New(db, store, log)
 	up := uploads.New(db, store, queue, uploads.Limits{
 		MaxFileSize: cfg.UploadMaxFileSize, MaxImagesPerFolder: cfg.UploadMaxImagesPerFolder,
 		MaxPixels: cfg.UploadMaxPixels,
@@ -252,7 +248,6 @@ func serve(log *slog.Logger) error {
 		go func() { defer wg.Done(); fn() }()
 	}
 	background(func() { queue.Run(ctx, cfg.WorkerCount) })
-	background(func() { dl.RunCleanup(ctx) })
 	background(func() { chunks.RunSweeper(ctx) })
 	background(func() { queue.RunSweepSchedule(ctx) })
 	background(func() {

@@ -16,7 +16,7 @@ This pulls the prebuilt image `ghcr.io/tiim/photo-collect` (tags: `edge` = lates
 `X.Y.Z` / `X.Y` for releases, `sha-<commit>`). To build from source instead, swap the
 `image:` line for `build: .` in the compose file and run `up --build`.
 
-The container persists everything under `/data` (`photos.db`, `photos/`, `exports/`).
+The container persists everything under `/data` (`photos.db`, `photos/`).
 
 ### Configuration (environment variables)
 
@@ -47,9 +47,6 @@ The container persists everything under `/data` (`photos.db`, `photos/`, `export
 | `UPLOAD_LINK_DURATION` | `168h` | Default validity of new upload links |
 | `THUMBNAIL_SIZE` / `PREVIEW_SIZE` | `400` / `1600` | Longest edge in pixels |
 | `WORKER_COUNT` | `2` | Background job workers |
-| `EXPORT_DIR` / `EXPORT_TTL` | `/data/exports` / `24h` | Where ZIP exports are built and how long they are kept |
-| `EXPORT_MAX_CONCURRENT` | `1` | ZIP exports built at the same time; others wait as "Preparing…" |
-| `EXPORT_MAX_BYTES` | `21474836480` (20 GiB) | Exports whose originals add up to more are refused with a message. `0` disables the limit |
 
 ### OIDC
 
@@ -147,7 +144,18 @@ Restrict who may sign in with an Authentik policy/group binding on the applicati
   policy allows that host for images on the folder page only. Tile use must follow the
   [OSM tile policy](https://operations.osmfoundation.org/policies/tiles/) (no bulk use).
   Guests are not told on the upload page yet (translation follows in stage 6).
-- Ratings and tags live only in SQLite; ZIP exports contain the originals plus `.xmp` sidecars.
+- Ratings and tags live only in SQLite; exports contain the originals plus `.xmp` sidecars.
+- Exports: **Download selected / all / all matching** streams a ZIP straight into the response
+  (originals stored uncompressed, sidecars deflated). Nothing is written on the server and the
+  download starts at once, with its size known so the browser shows progress.
+  Chrome and Edge on desktop also show **Save to folder…**: the page writes the originals and
+  sidecars into a folder you pick (in a subfolder named after the folder), a few at a time.
+  Running it again into the same folder downloads only photos that are missing or incomplete and
+  rewrites only the sidecars whose ratings, tags, time or position changed, so it doubles as
+  resume and incremental sync. Each photo keeps the same file name in every export (assigned once,
+  in upload order, with `_2`, `_3`, … for duplicate names). The file list is at
+  `GET /folders/<id>/export.json` (same selection parameters as the ZIP). The `EXPORT_*`
+  variables are no longer used; old ZIPs in `/data/exports` can be deleted by hand.
 - Storage keys are generated IDs (`folders/<folder>/images/<image>/original|preview|thumbnail`).
 - Deleting a folder hides it immediately and queues a retryable job that removes all objects,
   then the database rows.
@@ -190,8 +198,7 @@ This runs `VACUUM INTO`, which produces a consistent snapshot while the service 
 Copy the snapshot off the host (restic, rclone, …).
 
 **Filesystem storage** – back up the `photos/` directory (e.g. `restic backup /data/photos`).
-Originals are immutable and never overwritten, so incremental backups are cheap. Exports
-(`/data/exports`) are temporary and need no backup.
+Originals are immutable and never overwritten, so incremental backups are cheap.
 
 **WebDAV storage** – use the provider's snapshots or `rclone sync` the remote directory.
 

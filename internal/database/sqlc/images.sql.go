@@ -20,6 +20,17 @@ func (q *Queries) BumpDerivativeVersion(ctx context.Context, id string) error {
 	return err
 }
 
+const countImagesMissingExportName = `-- name: CountImagesMissingExportName :one
+SELECT COUNT(*) FROM images WHERE folder_id = ? AND export_name IS NULL
+`
+
+func (q *Queries) CountImagesMissingExportName(ctx context.Context, folderID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countImagesMissingExportName, folderID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countTrashedImagesInFolder = `-- name: CountTrashedImagesInFolder :one
 SELECT COUNT(*) FROM images WHERE folder_id = ? AND deleted_at IS NOT NULL
 `
@@ -33,7 +44,7 @@ func (q *Queries) CountTrashedImagesInFolder(ctx context.Context, folderID strin
 
 const getImage = `-- name: GetImage :one
 
-SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds, i.phash, i.phash_attempted_at, i.derivative_version, i.deleted_at, i.deleted_by, i.gps_lat, i.gps_lon, i.gps_attempted_at FROM images i
+SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds, i.phash, i.phash_attempted_at, i.derivative_version, i.deleted_at, i.deleted_by, i.gps_lat, i.gps_lon, i.gps_attempted_at, i.export_name FROM images i
 JOIN folders f ON f.id = i.folder_id
 WHERE i.id = ? AND f.deleted_at IS NULL AND i.deleted_at IS NULL
 `
@@ -72,12 +83,13 @@ func (q *Queries) GetImage(ctx context.Context, id string) (Image, error) {
 		&i.GpsLat,
 		&i.GpsLon,
 		&i.GpsAttemptedAt,
+		&i.ExportName,
 	)
 	return i, err
 }
 
 const getImageAny = `-- name: GetImageAny :one
-SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds, i.phash, i.phash_attempted_at, i.derivative_version, i.deleted_at, i.deleted_by, i.gps_lat, i.gps_lon, i.gps_attempted_at FROM images i
+SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds, i.phash, i.phash_attempted_at, i.derivative_version, i.deleted_at, i.deleted_by, i.gps_lat, i.gps_lon, i.gps_attempted_at, i.export_name FROM images i
 JOIN folders f ON f.id = i.folder_id
 WHERE i.id = ? AND f.deleted_at IS NULL
 `
@@ -115,12 +127,13 @@ func (q *Queries) GetImageAny(ctx context.Context, id string) (Image, error) {
 		&i.GpsLat,
 		&i.GpsLon,
 		&i.GpsAttemptedAt,
+		&i.ExportName,
 	)
 	return i, err
 }
 
 const getImageBySha256InFolder = `-- name: GetImageBySha256InFolder :one
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at FROM images WHERE folder_id = ? AND sha256 = ?
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at, export_name FROM images WHERE folder_id = ? AND sha256 = ?
 `
 
 type GetImageBySha256InFolderParams struct {
@@ -160,12 +173,13 @@ func (q *Queries) GetImageBySha256InFolder(ctx context.Context, arg GetImageBySh
 		&i.GpsLat,
 		&i.GpsLon,
 		&i.GpsAttemptedAt,
+		&i.ExportName,
 	)
 	return i, err
 }
 
 const getImageUnchecked = `-- name: GetImageUnchecked :one
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at FROM images WHERE id = ?
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at, export_name FROM images WHERE id = ?
 `
 
 func (q *Queries) GetImageUnchecked(ctx context.Context, id string) (Image, error) {
@@ -200,6 +214,7 @@ func (q *Queries) GetImageUnchecked(ctx context.Context, id string) (Image, erro
 		&i.GpsLat,
 		&i.GpsLon,
 		&i.GpsAttemptedAt,
+		&i.ExportName,
 	)
 	return i, err
 }
@@ -219,7 +234,7 @@ func (q *Queries) HardDeleteImage(ctx context.Context, id string) (int64, error)
 const insertImage = `-- name: InsertImage :one
 INSERT INTO images (id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, device_key, exif_time, gps_lat, gps_lon, gps_attempted_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at
+RETURNING seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at, export_name
 `
 
 type InsertImageParams struct {
@@ -286,6 +301,7 @@ func (q *Queries) InsertImage(ctx context.Context, arg InsertImageParams) (Image
 		&i.GpsLat,
 		&i.GpsLon,
 		&i.GpsAttemptedAt,
+		&i.ExportName,
 	)
 	return i, err
 }
@@ -385,15 +401,15 @@ func (q *Queries) ListDeletedFolderIDs(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
-const listExportImages = `-- name: ListExportImages :many
-SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds, i.phash, i.phash_attempted_at, i.derivative_version, i.deleted_at, i.deleted_by, i.gps_lat, i.gps_lon, i.gps_attempted_at FROM export_images ei
-JOIN images i ON i.id = ei.image_id
-WHERE ei.export_id = ? AND i.deleted_at IS NULL
-ORDER BY i.seq
+const listExportableImagesInFolder = `-- name: ListExportableImagesInFolder :many
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at, export_name FROM images
+WHERE folder_id = ? AND deleted_at IS NULL AND is_calibration = 0
+ORDER BY seq
 `
 
-func (q *Queries) ListExportImages(ctx context.Context, exportID string) ([]Image, error) {
-	rows, err := q.db.QueryContext(ctx, listExportImages, exportID)
+// Images of a folder for "download all": not trashed, no calibration shots.
+func (q *Queries) ListExportableImagesInFolder(ctx context.Context, folderID string) ([]Image, error) {
+	rows, err := q.db.QueryContext(ctx, listExportableImagesInFolder, folderID)
 	if err != nil {
 		return nil, err
 	}
@@ -430,6 +446,7 @@ func (q *Queries) ListExportImages(ctx context.Context, exportID string) ([]Imag
 			&i.GpsLat,
 			&i.GpsLon,
 			&i.GpsAttemptedAt,
+			&i.ExportName,
 		); err != nil {
 			return nil, err
 		}
@@ -498,8 +515,36 @@ func (q *Queries) ListFolderDevices(ctx context.Context, folderID string) ([]Lis
 	return items, nil
 }
 
+const listFolderExportNames = `-- name: ListFolderExportNames :many
+SELECT export_name FROM images WHERE folder_id = ? AND export_name IS NOT NULL
+`
+
+// Every image row of the folder, trashed or not: names stay reserved.
+func (q *Queries) ListFolderExportNames(ctx context.Context, folderID string) ([]sql.NullString, error) {
+	rows, err := q.db.QueryContext(ctx, listFolderExportNames, folderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []sql.NullString
+	for rows.Next() {
+		var export_name sql.NullString
+		if err := rows.Scan(&export_name); err != nil {
+			return nil, err
+		}
+		items = append(items, export_name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listImagesByIDs = `-- name: ListImagesByIDs :many
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at FROM images
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at, export_name FROM images
 WHERE folder_id = ? AND deleted_at IS NULL AND id IN (/*SLICE:image_ids*/?)
 ORDER BY seq
 `
@@ -558,6 +603,7 @@ func (q *Queries) ListImagesByIDs(ctx context.Context, arg ListImagesByIDsParams
 			&i.GpsLat,
 			&i.GpsLon,
 			&i.GpsAttemptedAt,
+			&i.ExportName,
 		); err != nil {
 			return nil, err
 		}
@@ -573,7 +619,7 @@ func (q *Queries) ListImagesByIDs(ctx context.Context, arg ListImagesByIDsParams
 }
 
 const listImagesInFolder = `-- name: ListImagesInFolder :many
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at FROM images
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at, export_name FROM images
 WHERE folder_id = ? AND deleted_at IS NULL AND seq < ?2
 ORDER BY seq DESC
 LIMIT ?3
@@ -623,7 +669,40 @@ func (q *Queries) ListImagesInFolder(ctx context.Context, arg ListImagesInFolder
 			&i.GpsLat,
 			&i.GpsLon,
 			&i.GpsAttemptedAt,
+			&i.ExportName,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listImagesMissingExportName = `-- name: ListImagesMissingExportName :many
+SELECT id, original_filename FROM images WHERE folder_id = ? AND export_name IS NULL ORDER BY seq
+`
+
+type ListImagesMissingExportNameRow struct {
+	ID               string
+	OriginalFilename string
+}
+
+func (q *Queries) ListImagesMissingExportName(ctx context.Context, folderID string) ([]ListImagesMissingExportNameRow, error) {
+	rows, err := q.db.QueryContext(ctx, listImagesMissingExportName, folderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListImagesMissingExportNameRow
+	for rows.Next() {
+		var i ListImagesMissingExportNameRow
+		if err := rows.Scan(&i.ID, &i.OriginalFilename); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -676,7 +755,7 @@ func (q *Queries) ListImagesMissingPHash(ctx context.Context) ([]ListImagesMissi
 }
 
 const listTrashedImagesByIDs = `-- name: ListTrashedImagesByIDs :many
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at FROM images
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at, export_name FROM images
 WHERE folder_id = ? AND deleted_at IS NOT NULL AND id IN (/*SLICE:image_ids*/?)
 ORDER BY seq
 `
@@ -735,6 +814,7 @@ func (q *Queries) ListTrashedImagesByIDs(ctx context.Context, arg ListTrashedIma
 			&i.GpsLat,
 			&i.GpsLon,
 			&i.GpsAttemptedAt,
+			&i.ExportName,
 		); err != nil {
 			return nil, err
 		}
@@ -750,7 +830,7 @@ func (q *Queries) ListTrashedImagesByIDs(ctx context.Context, arg ListTrashedIma
 }
 
 const listTrashedImagesInFolder = `-- name: ListTrashedImagesInFolder :many
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at FROM images
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at, export_name FROM images
 WHERE folder_id = ? AND deleted_at IS NOT NULL AND seq < ?2
 ORDER BY seq DESC
 LIMIT ?3
@@ -800,6 +880,7 @@ func (q *Queries) ListTrashedImagesInFolder(ctx context.Context, arg ListTrashed
 			&i.GpsLat,
 			&i.GpsLon,
 			&i.GpsAttemptedAt,
+			&i.ExportName,
 		); err != nil {
 			return nil, err
 		}
@@ -956,6 +1037,20 @@ type SetImageCalibrationParams struct {
 
 func (q *Queries) SetImageCalibration(ctx context.Context, arg SetImageCalibrationParams) error {
 	_, err := q.db.ExecContext(ctx, setImageCalibration, arg.CalibRefTime, arg.ID)
+	return err
+}
+
+const setImageExportName = `-- name: SetImageExportName :exec
+UPDATE images SET export_name = ? WHERE id = ?
+`
+
+type SetImageExportNameParams struct {
+	ExportName sql.NullString
+	ID         string
+}
+
+func (q *Queries) SetImageExportName(ctx context.Context, arg SetImageExportNameParams) error {
+	_, err := q.db.ExecContext(ctx, setImageExportName, arg.ExportName, arg.ID)
 	return err
 }
 

@@ -23,6 +23,7 @@ var dateLayouts = map[string]string{"de": "02.01.2006 15:04"}
 var jsKeys = []string{
 	"js.copied", "detail.prev_hint", "detail.next_hint", "js.waiting", "js.uploading", "js.uploaded", "js.already_uploaded", "js.network_error", "js.busy_retry",
 	"js.busy_give_up", "js.expired", "js.too_large", "js.failed", "js.network_retry", "js.processing", "clock.synced", "clock.unreachable",
+	"js.save_listing", "js.save_progress", "js.save_done", "js.save_failed", "js.save_cancelled", "js.save_error", "err.select_one",
 }
 
 // localeFuncs returns the template functions for one language. Templates are

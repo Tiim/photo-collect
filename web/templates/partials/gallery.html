@@ -48,9 +48,11 @@
 {{end}}
 
 {{define "gallery"}}
-<form id="select-form" hx-post="/folders/{{.FolderID}}/downloads" hx-target="#exports" hx-swap="outerHTML" class="row toolbar">
-  <button type="submit">{{t "gallery.download_selected"}}</button>
+<form id="select-form" method="post" action="/folders/{{.FolderID}}/export.zip" class="row toolbar">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <button type="submit" data-need-selection>{{t "gallery.download_selected"}}</button>
   <button type="submit" name="all" value="1">{{t "gallery.download_all"}}</button>
+  <button type="button" class="secondary" data-save-folder="/folders/{{.FolderID}}/export.json?all=1" title="{{t "gallery.save_folder_hint"}}">{{t "gallery.save_all"}}</button>
   <button type="button" data-select-all class="secondary">{{t "select_all_loaded"}}</button>
   <button type="button" class="danger" hx-post="/folders/{{.FolderID}}/images/trash{{.Filter.Query}}" hx-target="#gallery" hx-swap="innerHTML"
           hx-confirm="{{t "gallery.trash_confirm"}}">{{t "gallery.trash"}}</button>
@@ -59,7 +61,8 @@
 {{if and .Filter.F.Active .Matching}}
 <div class="row matching">
   <span class="small">{{t "gallery.all_matching" (dict "Count" .Matching)}}</span>
-  <button type="button" class="secondary" hx-post="/folders/{{.FolderID}}/downloads{{.Filter.Query}}&matching=1" hx-target="#exports" hx-swap="outerHTML">{{t "gallery.download_matching"}}</button>
+  <a class="button secondary" href="/folders/{{.FolderID}}/export.zip{{.Filter.Query}}&matching=1">{{t "gallery.download_matching"}}</a>
+  <button type="button" class="secondary" data-save-folder="/folders/{{.FolderID}}/export.json{{.Filter.Query}}&matching=1" title="{{t "gallery.save_folder_hint"}}">{{t "gallery.save_matching"}}</button>
   <button type="button" class="danger" hx-post="/folders/{{.FolderID}}/images/trash{{.Filter.Query}}&matching=1&expect={{.Matching}}" hx-target="#gallery" hx-swap="innerHTML"
           hx-confirm="{{t "gallery.trash_matching_confirm" (dict "Count" .Matching)}}">{{t "gallery.trash_matching"}}</button>
 </div>

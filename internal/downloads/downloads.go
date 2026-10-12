@@ -1,17 +1,18 @@
-// Package downloads builds ZIP exports (originals plus XMP sidecars) in the background.
+// Package downloads exports photos: a ZIP of the originals plus XMP sidecars
+// streamed straight into the response, and the file list behind "save to folder".
 package downloads
 
 import (
 	"archive/zip"
+	"cmp"
+	"compress/flate"
 	"context"
 	"database/sql"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
+	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,319 +20,283 @@ import (
 	"github.com/tiim/photo-collect/internal/database/sqlc"
 	"github.com/tiim/photo-collect/internal/domain"
 	"github.com/tiim/photo-collect/internal/images"
-	"github.com/tiim/photo-collect/internal/jobs"
 	"github.com/tiim/photo-collect/internal/storage"
 )
 
-// busyRetry is how long an export job waits when all build slots are taken.
-var busyRetry = 15 * time.Second
-
-// Limits bound the resources exports may use.
-type Limits struct {
-	MaxConcurrent int   // builds running at the same time (minimum 1)
-	MaxBytes      int64 // total size of the originals in one export; 0 = unlimited
-}
-
-// TooLargeError is returned for exports above Limits.MaxBytes.
-type TooLargeError struct{ Size, Max int64 }
-
-func (e *TooLargeError) Error() string {
-	return fmt.Sprintf("Export is too large (%s, the limit is %s). Select fewer photos and export in several parts.", gib(e.Size), gib(e.Max))
-}
-
-func gib(n int64) string { return fmt.Sprintf("%.1f GiB", float64(n)/(1<<30)) }
-
 type Service struct {
-	db     *database.DB
-	store  storage.Store
-	queue  *jobs.Queue
-	dir    string
-	ttl    time.Duration
-	log    *slog.Logger
-	limits Limits
-	slots  chan struct{}
+	db    *database.DB
+	store storage.Store
+	log   *slog.Logger
 }
 
-func New(db *database.DB, store storage.Store, queue *jobs.Queue, dir string, ttl time.Duration, log *slog.Logger) (*Service, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("create export dir: %w", err)
-	}
-	s := &Service{db: db, store: store, queue: queue, dir: dir, ttl: ttl, log: log}
-	s.SetLimits(Limits{MaxConcurrent: 1})
-	queue.Handle(jobs.TypeBuildExport, s.build)
-	return s, nil
+func New(db *database.DB, store storage.Store, log *slog.Logger) *Service {
+	return &Service{db: db, store: store, log: log}
 }
 
-// SetLimits configures the export limits. Call before the queue starts.
-func (s *Service) SetLimits(l Limits) {
-	l.MaxConcurrent = max(1, l.MaxConcurrent)
-	s.limits = l
-	s.slots = make(chan struct{}, l.MaxConcurrent)
+// Export is the content of one export, in upload order.
+type Export struct {
+	FolderID   string
+	FolderName string
+	Dir        string // top-level directory in the ZIP and in "save to folder"
+	Created    time.Time
+	Files      []File
 }
 
-// checkSize returns a *TooLargeError when the export's originals exceed the limit.
-func (s *Service) checkSize(ctx context.Context, q *sqlc.Queries, exportID string) error {
-	if s.limits.MaxBytes <= 0 {
-		return nil
-	}
-	size, err := q.SumExportImageBytes(ctx, exportID)
+// File is one exported photo and its sidecar.
+type File struct {
+	ImageID  string
+	Name     string // stable per image, see EnsureNames
+	Size     int64
+	SHA256   string
+	Modified time.Time // upload time
+	XMP      []byte
+}
+
+// XMPName is the name of the photo's sidecar: the photo's name with .xmp as
+// extension. Export names are unique without extension, so sidecars never collide.
+func (f File) XMPName() string {
+	return strings.TrimSuffix(f.Name, path.Ext(f.Name)) + ".xmp"
+}
+
+// Prepare collects the given images of a folder (all images except
+// calibration shots if imageIDs is empty). Trashed images are left out.
+func (s *Service) Prepare(ctx context.Context, folderID string, imageIDs []string) (*Export, error) {
+	folder, err := s.db.Q.GetFolder(ctx, folderID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if size > s.limits.MaxBytes {
-		return &TooLargeError{Size: size, Max: s.limits.MaxBytes}
+	if err := s.EnsureNames(ctx, folderID); err != nil {
+		return nil, fmt.Errorf("assign export names: %w", err)
 	}
-	return nil
-}
-
-// Create records an export of the given images (all images of the folder if
-// imageIDs is empty) and enqueues its build.
-func (s *Service) Create(ctx context.Context, folderID, userID string, imageIDs []string) (sqlc.Export, error) {
-	var exp sqlc.Export
-	err := s.db.InTx(ctx, func(q *sqlc.Queries) error {
-		if _, err := q.GetFolder(ctx, folderID); err != nil {
-			return err
+	var imgs []sqlc.Image
+	if len(imageIDs) == 0 {
+		if imgs, err = s.db.Q.ListExportableImagesInFolder(ctx, folderID); err != nil {
+			return nil, err
 		}
-		var err error
-		exp, err = q.CreateExport(ctx, sqlc.CreateExportParams{
-			ID:        domain.NewID(),
-			FolderID:  folderID,
-			UserID:    sql.NullString{String: userID, Valid: userID != ""},
-			ExpiresAt: database.Time(time.Now().Add(s.ttl)),
-		})
-		if err != nil {
-			return err
-		}
-		if len(imageIDs) == 0 {
-			err = q.AddAllFolderImagesToExport(ctx, sqlc.AddAllFolderImagesToExportParams{ExportID: exp.ID, FolderID: folderID})
-		} else {
-			// In chunks: "all matching" a filter can be thousands of IDs.
-			for start := 0; start < len(imageIDs) && err == nil; start += 500 {
-				imgs, e := q.ListImagesByIDs(ctx, sqlc.ListImagesByIDsParams{
-					FolderID: folderID, ImageIds: imageIDs[start:min(start+500, len(imageIDs))],
-				})
-				if e != nil {
-					return e
-				}
-				for _, im := range imgs {
-					if err = q.AddExportImage(ctx, sqlc.AddExportImageParams{ExportID: exp.ID, ImageID: im.ID}); err != nil {
-						break
-					}
-				}
+	} else {
+		// In chunks: "all matching" a filter can be thousands of IDs.
+		for ids := range slices.Chunk(imageIDs, 500) {
+			part, err := s.db.Q.ListImagesByIDs(ctx, sqlc.ListImagesByIDsParams{FolderID: folderID, ImageIds: ids})
+			if err != nil {
+				return nil, err
 			}
+			imgs = append(imgs, part...)
 		}
-		if err != nil {
-			return err
-		}
-		if err := s.checkSize(ctx, q, exp.ID); err != nil {
-			return err // rolls back: nothing is queued
-		}
-		return s.queue.Enqueue(ctx, q, jobs.TypeBuildExport, jobs.ExportPayload{ExportID: exp.ID})
-	})
-	return exp, err
-}
-
-// withGPS adds the image's position, if it has one, to the sidecar data.
-func withGPS(x XMPData, im sqlc.Image) XMPData {
-	if im.GpsLat.Valid && im.GpsLon.Valid {
-		x.HasGPS, x.Lat, x.Lon = true, im.GpsLat.Float64, im.GpsLon.Float64
+		slices.SortFunc(imgs, func(a, b sqlc.Image) int { return cmp.Compare(a.Seq, b.Seq) })
 	}
-	return x
-}
-
-// FilePath returns the path of a ready export's ZIP file.
-func (s *Service) FilePath(e sqlc.Export) string {
-	return filepath.Join(s.dir, filepath.Base(e.FileKey.String))
-}
-
-func (s *Service) build(ctx context.Context, raw json.RawMessage) error {
-	var p jobs.ExportPayload
-	if err := json.Unmarshal(raw, &p); err != nil {
-		return err
-	}
-	exp, err := s.db.Q.GetExport(ctx, p.ExportID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
+	tags, err := s.tags(ctx, imgs)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if exp.Status == "ready" {
-		return nil
-	}
-	if err := s.checkSize(ctx, s.db.Q, exp.ID); err != nil {
-		var tl *TooLargeError
-		if !errors.As(err, &tl) {
-			return err
+	e := &Export{FolderID: folder.ID, FolderName: folder.Name, Dir: domain.SafeFilename(folder.Name), Created: time.Now()}
+	for _, im := range imgs {
+		if !im.ExportName.Valid {
+			continue // uploaded after the names were assigned
 		}
-		s.log.Warn("export refused: too large", "export_id", exp.ID, "bytes", tl.Size, "max", tl.Max)
-		if e := s.db.Q.MarkExportFailed(ctx, sqlc.MarkExportFailedParams{
-			Error: sql.NullString{String: err.Error(), Valid: true}, ID: exp.ID}); e != nil {
-			return e
-		}
-		return jobs.Permanent(err)
-	}
-	// Do not hold a job worker while waiting for a build slot: derivatives must keep flowing.
-	select {
-	case s.slots <- struct{}{}:
-		defer func() { <-s.slots }()
-	default:
-		return jobs.Defer(busyRetry)
-	}
-	if err := s.db.Q.MarkExportRunning(ctx, exp.ID); err != nil {
-		return err
-	}
-	size, err := s.writeZip(ctx, exp)
-	if err != nil {
-		s.log.Error("export failed", "export_id", exp.ID, "err", err)
-		_ = s.db.Q.MarkExportFailed(context.WithoutCancel(ctx), sqlc.MarkExportFailedParams{
-			Error: sql.NullString{String: err.Error(), Valid: true}, ID: exp.ID})
-		return err
-	}
-	return s.db.Q.MarkExportReady(ctx, sqlc.MarkExportReadyParams{
-		FileKey:   sql.NullString{String: exp.ID + ".zip", Valid: true},
-		SizeBytes: sql.NullInt64{Int64: size, Valid: true},
-		ID:        exp.ID,
-	})
-}
-
-func (s *Service) writeZip(ctx context.Context, exp sqlc.Export) (int64, error) {
-	imgs, err := s.db.Q.ListExportImages(ctx, exp.ID)
-	if err != nil {
-		return 0, err
-	}
-	tagRows, err := s.db.Q.ListTagsForExport(ctx, exp.ID)
-	if err != nil {
-		return 0, err
-	}
-	tags := map[string][]string{}
-	for _, r := range tagRows {
-		tags[r.ImageID] = append(tags[r.ImageID], r.Name)
-	}
-	folder, err := s.db.Q.GetFolder(ctx, exp.FolderID)
-	if err != nil {
-		return 0, err
-	}
-	dir := domain.SafeFilename(folder.Name) + "/"
-
-	names := make([]string, len(imgs))
-	for i, im := range imgs {
-		names[i] = im.OriginalFilename
-	}
-	names = domain.UniqueNames(names)
-
-	final := filepath.Join(s.dir, exp.ID+".zip")
-	f, err := os.Create(final + ".tmp")
-	if err != nil {
-		return 0, err
-	}
-	ok := false
-	defer func() {
-		f.Close()
-		if !ok {
-			os.Remove(final + ".tmp")
-		}
-	}()
-	zw := zip.NewWriter(f)
-
-	for i, im := range imgs {
-		if err := ctx.Err(); err != nil {
-			return 0, err
-		}
-		rc, err := s.store.Get(ctx, storage.OriginalKey(im.FolderID, im.ID))
-		if errors.Is(err, storage.ErrNotFound) {
-			s.log.Warn("export: original missing, skipping", "image_id", im.ID)
-			continue
-		}
-		if err != nil {
-			return 0, err
-		}
-		created, _ := database.ParseTime(im.CreatedAt)
-		// Photos are already compressed, so store them without deflating.
-		w, err := zw.CreateHeader(&zip.FileHeader{Name: dir + names[i], Method: zip.Store, Modified: created})
-		if err == nil {
-			_, err = io.Copy(w, rc)
-		}
-		rc.Close()
-		if err != nil {
-			return 0, err
-		}
-
 		rating := 0
 		if im.Rating.Valid {
 			rating = int(im.Rating.Int64)
 		}
-		ext := filepath.Ext(names[i])
-		xw, err := zw.CreateHeader(&zip.FileHeader{Name: dir + strings.TrimSuffix(names[i], ext) + ".xmp", Method: zip.Deflate, Modified: time.Now()})
-		if err != nil {
-			return 0, err
-		}
-		xmp := XMPData{Rating: rating, Tags: tags[im.ID], Uploader: im.UploaderNickname}
+		x := XMPData{Rating: rating, Tags: tags[im.ID], Uploader: im.UploaderNickname}
 		if im.TimeOffsetSeconds.Valid {
-			xmp.Captured, _ = images.CorrectedTime(im.ExifTime, im.TimeOffsetSeconds)
+			x.Captured, _ = images.CorrectedTime(im.ExifTime, im.TimeOffsetSeconds)
 		}
-		if _, err := xw.Write(BuildXMP(withGPS(xmp, im))); err != nil {
-			return 0, err
+		if im.GpsLat.Valid && im.GpsLon.Valid {
+			x.HasGPS, x.Lat, x.Lon = true, im.GpsLat.Float64, im.GpsLon.Float64
 		}
+		created, _ := database.ParseTime(im.CreatedAt)
+		e.Files = append(e.Files, File{
+			ImageID: im.ID, Name: im.ExportName.String, Size: im.SizeBytes, SHA256: im.Sha256,
+			Modified: created, XMP: BuildXMP(x),
+		})
 	}
-	if err := zw.Close(); err != nil {
-		return 0, err
-	}
-	if err := f.Sync(); err != nil {
-		return 0, err
-	}
-	st, err := f.Stat()
-	if err != nil {
-		return 0, err
-	}
-	if err := f.Close(); err != nil {
-		return 0, err
-	}
-	if err := os.Rename(final+".tmp", final); err != nil {
-		return 0, err
-	}
-	ok = true
-	return st.Size(), nil
+	return e, nil
 }
 
-// RunCleanup periodically deletes expired exports until ctx is cancelled.
-func (s *Service) RunCleanup(ctx context.Context) {
-	s.cleanup(ctx)
-	t := time.NewTicker(time.Hour)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			s.cleanup(ctx)
+func (s *Service) tags(ctx context.Context, imgs []sqlc.Image) (map[string][]string, error) {
+	ids := make([]string, len(imgs))
+	for i, im := range imgs {
+		ids[i] = im.ID
+	}
+	tags := map[string][]string{}
+	for part := range slices.Chunk(ids, 500) {
+		rows, err := s.db.Q.ListTagsForImages(ctx, part)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			tags[r.ImageID] = append(tags[r.ImageID], r.Name)
 		}
 	}
+	return tags, nil
 }
 
-func (s *Service) cleanup(ctx context.Context) {
-	expired, err := s.db.Q.ListExpiredExports(ctx, database.Time(time.Now()))
-	if err != nil {
-		s.log.Error("list expired exports", "err", err)
-		return
+// EnsureNames gives every image of the folder that has no export name yet one,
+// in upload order. A name is never changed once assigned and stays reserved
+// while the image exists (also in the trash), so the same photo always gets the
+// same file name, whatever is selected.
+func (s *Service) EnsureNames(ctx context.Context, folderID string) error {
+	n, err := s.db.Q.CountImagesMissingExportName(ctx, folderID)
+	if err != nil || n == 0 {
+		return err
 	}
-	for _, e := range expired {
-		if err := os.Remove(filepath.Join(s.dir, e.ID+".zip")); err != nil && !errors.Is(err, os.ErrNotExist) {
-			s.log.Error("remove expired export", "export_id", e.ID, "err", err)
-			continue
+	return s.db.InTx(ctx, func(q *sqlc.Queries) error {
+		names, err := q.ListFolderExportNames(ctx, folderID)
+		if err != nil {
+			return err
 		}
-		if err := s.db.Q.DeleteExport(ctx, e.ID); err != nil {
-			s.log.Error("delete export row", "export_id", e.ID, "err", err)
+		used := make(map[string]bool, len(names))
+		for _, n := range names {
+			used[domain.NameKey(n.String)] = true
 		}
-	}
-	// Remove leftovers from interrupted builds.
-	if entries, err := os.ReadDir(s.dir); err == nil {
-		for _, en := range entries {
-			if strings.HasSuffix(en.Name(), ".tmp") {
-				if info, err := en.Info(); err == nil && time.Since(info.ModTime()) > time.Hour {
-					os.Remove(filepath.Join(s.dir, en.Name()))
-				}
+		missing, err := q.ListImagesMissingExportName(ctx, folderID)
+		if err != nil {
+			return err
+		}
+		for _, m := range missing {
+			name := domain.UniqueName(m.OriginalFilename, used)
+			if err := q.SetImageExportName(ctx, sqlc.SetImageExportNameParams{
+				ExportName: sql.NullString{String: name, Valid: true}, ID: m.ID,
+			}); err != nil {
+				return err
 			}
 		}
+		return nil
+	})
+}
+
+// ZIP layout. Originals are stored as they are (photos are already
+// compressed), sidecars are deflated. Every entry gets an extended timestamp
+// and a data descriptor, as archive/zip writes them; ZipSize mirrors that.
+
+// newDeflater returns the compressor for sidecars, used both for ZipSize and
+// in the ZIP itself. Entries are written one after another, so it reuses a
+// single flate writer: they are large.
+func newDeflater() zip.Compressor {
+	var fw *flate.Writer
+	return func(w io.Writer) (io.WriteCloser, error) {
+		if fw == nil {
+			var err error
+			fw, err = flate.NewWriter(w, flate.DefaultCompression)
+			return fw, err
+		}
+		fw.Reset(w)
+		return fw, nil
 	}
+}
+
+type countWriter struct{ n int64 }
+
+func (c *countWriter) Write(p []byte) (int, error) { c.n += int64(len(p)); return len(p), nil }
+
+type zipEntry struct {
+	name      string
+	comp, raw int64 // compressed and uncompressed size
+}
+
+func (e *Export) entries() []zipEntry {
+	out := make([]zipEntry, 0, 2*len(e.Files))
+	deflate := newDeflater()
+	for _, f := range e.Files {
+		var c countWriter
+		fw, _ := deflate(&c)
+		fw.Write(f.XMP)
+		fw.Close()
+		out = append(out,
+			zipEntry{name: e.Dir + "/" + f.Name, comp: f.Size, raw: f.Size},
+			zipEntry{name: e.Dir + "/" + f.XMPName(), comp: c.n, raw: int64(len(f.XMP))})
+	}
+	return out
+}
+
+// ZipSize is the exact length of the ZIP that WriteZip writes, so that it can
+// be sent as Content-Length.
+func (e *Export) ZipSize() int64 {
+	return zipSize(e.entries())
+}
+
+func zipSize(entries []zipEntry) int64 {
+	const (
+		u32       = 1<<32 - 1
+		u16       = 1<<16 - 1
+		extTime   = 9 // extended timestamp extra field
+		local     = 30
+		central   = 46
+		desc      = 16
+		desc64    = 24
+		end       = 22
+		end64     = 56 + 20 // zip64 end record and locator
+		zip64Head = 4       // zip64 extra field header, plus 8 per value
+	)
+	var off, dir int64
+	zip64 := false
+	for _, e := range entries {
+		name := int64(len(e.name))
+		d := int64(desc)
+		if e.comp > u32 || e.raw > u32 {
+			d = desc64
+		}
+		c := central + name + extTime
+		n := 0
+		for _, v := range []int64{e.comp, e.raw, off} {
+			if v >= u32 {
+				n++
+			}
+		}
+		if n > 0 {
+			c += zip64Head + 8*int64(n)
+			zip64 = true
+		}
+		off += local + name + extTime + e.comp + d
+		dir += c
+	}
+	size := off + dir + end
+	if zip64 || len(entries) >= u16 || dir >= u32 || off >= u32 {
+		size += end64
+	}
+	return size
+}
+
+// WriteZip streams the export as a ZIP to w. An error part way leaves w with
+// a truncated archive; the caller should abort the response.
+func (s *Service) WriteZip(ctx context.Context, w io.Writer, e *Export) error {
+	zw := zip.NewWriter(w)
+	zw.RegisterCompressor(zip.Deflate, newDeflater())
+	for _, f := range e.Files {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := s.writeOriginal(ctx, zw, e, f); err != nil {
+			return err
+		}
+		xw, err := zw.CreateHeader(&zip.FileHeader{Name: e.Dir + "/" + f.XMPName(), Method: zip.Deflate, Modified: e.Created})
+		if err != nil {
+			return err
+		}
+		if _, err := xw.Write(f.XMP); err != nil {
+			return err
+		}
+	}
+	return zw.Close()
+}
+
+func (s *Service) writeOriginal(ctx context.Context, zw *zip.Writer, e *Export, f File) error {
+	rc, err := s.store.Get(ctx, storage.OriginalKey(e.FolderID, f.ImageID))
+	if err != nil {
+		return fmt.Errorf("original of %s: %w", f.ImageID, err)
+	}
+	defer rc.Close()
+	w, err := zw.CreateHeader(&zip.FileHeader{Name: e.Dir + "/" + f.Name, Method: zip.Store, Modified: f.Modified})
+	if err != nil {
+		return err
+	}
+	// The size was announced up front: anything else would corrupt the archive.
+	n, err := io.Copy(w, io.LimitReader(rc, f.Size+1))
+	if err != nil {
+		return fmt.Errorf("original of %s: %w", f.ImageID, err)
+	}
+	if n != f.Size {
+		return fmt.Errorf("original of %s has %d bytes, expected %d", f.ImageID, n, f.Size)
+	}
+	return nil
 }

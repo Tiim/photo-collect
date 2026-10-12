@@ -1,144 +1,122 @@
 package http
 
 import (
-	"context"
-	"errors"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"net/http"
-	"os"
-	"time"
+	"strconv"
 
-	"github.com/tiim/photo-collect/internal/database"
 	"github.com/tiim/photo-collect/internal/domain"
 	"github.com/tiim/photo-collect/internal/downloads"
 )
 
-func (s *Server) exportsView(ctx context.Context, folderID string) (ExportsView, error) {
-	exps, err := s.db.Q.ListFolderExports(ctx, folderID)
-	if err != nil {
-		return ExportsView{}, err
-	}
-	v := ExportsView{FolderID: folderID}
-	nowStr := database.Time(time.Now())
-	for _, e := range exps {
-		if e.ExpiresAt <= nowStr {
-			continue // about to be cleaned up
-		}
-		v.Exports = append(v.Exports, ExportRow{Export: e, Ready: e.Status == "ready"})
-		if e.Status == "pending" || e.Status == "running" {
-			v.Active = true
-		}
-	}
-	return v, nil
-}
-
-func (s *Server) exportsPanel(w http.ResponseWriter, r *http.Request) {
+// prepareExport reads which images to export and collects them: with
+// matching=1 in the query everything matching the filter there, with all=1
+// (query or form) the whole folder, otherwise the "image" fields. It writes
+// the error response itself when ok is false.
+func (s *Server) prepareExport(w http.ResponseWriter, r *http.Request) (exp *downloads.Export, ok bool) {
 	f, ok := s.folder(w, r)
 	if !ok {
-		return
-	}
-	v, err := s.exportsView(r.Context(), f.ID)
-	if err != nil {
-		s.serverError(w, r, err)
-		return
-	}
-	s.fragment(w, r, "exports", v)
-}
-
-// exportCreate queues an export of the selected images, or all with all=1.
-func (s *Server) exportCreate(w http.ResponseWriter, r *http.Request) {
-	f, ok := s.folder(w, r)
-	if !ok {
-		return
+		return nil, false
 	}
 	if err := r.ParseForm(); err != nil {
 		s.fail(w, r, http.StatusBadRequest, "err.bad_request")
-		return
+		return nil, false
 	}
 	var ids []string
 	if r.URL.Query().Get("matching") == "1" {
 		// Everything that matches the filter in the query string, resolved now.
 		flt, ok := s.parseFilter(w, r)
 		if !ok {
-			return
+			return nil, false
 		}
 		var err error
 		if ids, err = s.matchingIDs(r.Context(), f.ID, flt); err != nil {
 			s.serverError(w, r, err)
-			return
+			return nil, false
 		}
 		if len(ids) == 0 {
 			s.fail(w, r, http.StatusBadRequest, "err.filter_none")
-			return
+			return nil, false
 		}
-	} else if r.PostFormValue("all") != "1" {
-		ids = r.PostForm["image"]
+	} else if r.Form.Get("all") != "1" {
+		ids = r.Form["image"]
 		if len(ids) == 0 {
 			s.fail(w, r, http.StatusBadRequest, "err.select_one")
-			return
+			return nil, false
 		}
 	}
-	sess := sessionFrom(r.Context())
-	exp, err := s.downloads.Create(r.Context(), f.ID, sess.UserID, ids)
-	var tooLarge *downloads.TooLargeError
-	if errors.As(err, &tooLarge) {
-		s.log.Info("export refused: too large", "folder_id", f.ID, "user_id", sess.UserID, "bytes", tooLarge.Size)
-		// 200 so htmx swaps the panel and shows the message.
-		v, err := s.exportsView(r.Context(), f.ID)
-		if err != nil {
-			s.serverError(w, r, err)
-			return
-		}
-		v.Error, _ = s.errText(r, tooLarge)
-		s.fragment(w, r, "exports", v)
-		return
-	}
+	exp, err := s.downloads.Prepare(r.Context(), f.ID, ids)
 	if err != nil {
 		s.notFoundOr(w, r, err)
-		return
+		return nil, false
 	}
-	s.log.Info("export requested", "export_id", exp.ID, "folder_id", f.ID, "user_id", sess.UserID, "selected", len(ids))
-	v, err := s.exportsView(r.Context(), f.ID)
-	if err != nil {
-		s.serverError(w, r, err)
-		return
-	}
-	s.fragment(w, r, "exports", v)
+	return exp, true
 }
 
-func (s *Server) exportDownload(w http.ResponseWriter, r *http.Request) {
-	exp, err := s.db.Q.GetExport(r.Context(), r.PathValue("id"))
-	if err != nil {
-		s.notFoundOr(w, r, err)
+// exportZip streams the originals and their XMP sidecars as a ZIP. Nothing is
+// stored on the server; the length is known up front, so browsers show progress.
+func (s *Server) exportZip(w http.ResponseWriter, r *http.Request) {
+	exp, ok := s.prepareExport(w, r)
+	if !ok {
 		return
 	}
-	folder, err := s.db.Q.GetFolder(r.Context(), exp.FolderID)
-	if err != nil {
-		s.notFoundOr(w, r, err)
-		return
-	}
-	if exp.Status != "ready" || exp.ExpiresAt <= database.Time(time.Now()) {
-		http.NotFound(w, r)
-		return
-	}
-	f, err := os.Open(s.downloads.FilePath(exp))
-	if errors.Is(err, os.ErrNotExist) {
-		http.NotFound(w, r)
-		return
-	}
-	if err != nil {
-		s.serverError(w, r, err)
-		return
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		s.serverError(w, r, err)
-		return
-	}
-	created, _ := database.ParseTime(exp.CreatedAt)
-	name := domain.Slug(folder.Name) + "-" + created.Format("2006-01-02") + ".zip"
+	sess := sessionFrom(r.Context())
+	name := domain.Slug(exp.FolderName) + "-" + exp.Created.Format("2006-01-02") + ".zip"
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	w.Header().Set("Content-Length", strconv.FormatInt(exp.ZipSize(), 10))
 	w.Header().Set("Cache-Control", "private, no-store")
-	http.ServeContent(w, r, name, st.ModTime(), f)
+	if r.Method == http.MethodHead {
+		return
+	}
+	s.log.Info("export started", "folder_id", exp.FolderID, "user_id", sess.UserID, "files", len(exp.Files))
+	if err := s.downloads.WriteZip(r.Context(), w, exp); err != nil {
+		if r.Context().Err() != nil {
+			s.log.Info("export cancelled by client", "folder_id", exp.FolderID, "user_id", sess.UserID)
+		} else {
+			s.log.Error("export failed", "folder_id", exp.FolderID, "user_id", sess.UserID, "err", err)
+		}
+		// Headers are out: drop the connection so the client sees a failed
+		// download rather than a short archive.
+		panic(http.ErrAbortHandler)
+	}
+}
+
+type exportFileJSON struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Size      int64  `json:"size"`
+	SHA256    string `json:"sha256"`
+	URL       string `json:"url"`
+	XMPName   string `json:"xmp_name"`
+	XMP       string `json:"xmp"`
+	XMPSHA256 string `json:"xmp_sha256"`
+}
+
+// exportJSON lists the files of an export for "save to folder": the page
+// downloads each original from its URL and writes the sidecar itself. Names
+// are relative to dir and stable per image, so a later run can skip what a
+// folder already has.
+func (s *Server) exportJSON(w http.ResponseWriter, r *http.Request) {
+	exp, ok := s.prepareExport(w, r)
+	if !ok {
+		return
+	}
+	files := make([]exportFileJSON, len(exp.Files))
+	for i, f := range exp.Files {
+		sum := sha256.Sum256(f.XMP)
+		files[i] = exportFileJSON{
+			ID: f.ImageID, Name: f.Name, Size: f.Size, SHA256: f.SHA256,
+			URL:     "/images/" + f.ImageID + "/original",
+			XMPName: f.XMPName(), XMP: string(f.XMP), XMPSHA256: hex.EncodeToString(sum[:]),
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "private, no-store")
+	_ = json.NewEncoder(w).Encode(struct {
+		Dir   string           `json:"dir"`
+		Files []exportFileJSON `json:"files"`
+	}{exp.Dir, files})
 }
