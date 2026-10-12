@@ -159,7 +159,7 @@ func TestChunkedUploadRejections(t *testing.T) {
 	if rec := e.chunkStart(token, nil, "a.jpg", len(data)); rec.Code != nethttp.StatusForbidden {
 		t.Errorf("without nickname: %d", rec.Code)
 	}
-	rec := e.chunkStart(token, nick, "a.jpg", 2<<20)
+	rec := e.chunkStart(token, nick, "a.jpg", 3<<20) // over the video limit too
 	if res := decodeChunk(t, rec).Results; rec.Code != nethttp.StatusBadRequest || !strings.Contains(res[0]["error"].(string), "too large") {
 		t.Errorf("too large: %d %s", rec.Code, rec.Body)
 	}

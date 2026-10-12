@@ -51,6 +51,13 @@ func (h *Handlers) deriveImage(ctx context.Context, raw json.RawMessage) error {
 	if err != nil {
 		return err
 	}
+	if images.IsVideo(img.MimeType) {
+		// Videos get no derivatives; record the attempt so the pHash
+		// backfill does not enqueue them again.
+		return h.DB.Q.MarkPHashAttempted(ctx, sqlc.MarkPHashAttemptedParams{
+			PhashAttemptedAt: sql.NullString{String: database.Time(time.Now()), Valid: true}, ID: img.ID,
+		})
+	}
 
 	rc, err := h.Store.Get(ctx, storage.OriginalKey(img.FolderID, img.ID))
 	if err != nil {
@@ -120,6 +127,11 @@ func (h *Handlers) extractGPS(ctx context.Context, raw json.RawMessage) error {
 	}
 	if img.GpsAttemptedAt.Valid {
 		return nil
+	}
+	if images.IsVideo(img.MimeType) { // positions are only read from images
+		return h.DB.Q.SetImageGPS(ctx, sqlc.SetImageGPSParams{
+			GpsAttemptedAt: sql.NullString{String: database.Time(time.Now()), Valid: true}, ID: img.ID,
+		})
 	}
 	rc, err := h.Store.Get(ctx, storage.OriginalKey(img.FolderID, img.ID))
 	if err != nil {
@@ -194,6 +206,9 @@ func (h *Handlers) analyzeImage(ctx context.Context, raw json.RawMessage) error 
 	}
 	if img.QrScanned != 0 {
 		return nil
+	}
+	if images.IsVideo(img.MimeType) { // calibration shots are photos
+		return h.DB.Q.MarkImageScanned(ctx, img.ID)
 	}
 
 	rc, err := h.Store.Get(ctx, storage.OriginalKey(img.FolderID, img.ID))

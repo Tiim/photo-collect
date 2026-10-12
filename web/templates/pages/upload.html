@@ -11,8 +11,8 @@
   <div id="dropzone" class="dropzone" data-url="/upload/{{.Token}}/chunked">
     <p>{{t "upload.drop"}}</p>
     <p class="muted">{{t "upload.or"}}</p>
-    <label class="button">{{t "upload.choose"}}<input id="file-input" type="file" multiple accept="image/*,.heic,.heif" hidden></label>
-    <p class="muted small">{{t "upload.formats" (dict "MB" .MaxSizeMB)}}</p>
+    <label class="button">{{t "upload.choose"}}<input id="file-input" type="file" multiple accept="image/*,video/*,.heic,.heif" hidden></label>
+    <p class="muted small">{{t "upload.formats" (dict "MB" .MaxSizeMB "VideoMB" .MaxVideoSizeMB)}}</p>
     <p class="muted small">{{t "upload.privacy"}}</p>
   </div>
   <p class="muted small">{{th "upload.clock_hint"}}</p>

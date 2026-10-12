@@ -16,11 +16,12 @@ import (
 const nicknameCookie = "nickname"
 
 type UploadPage struct {
-	Token      string
-	FolderName string
-	Nickname   string // empty until the visitor has chosen one
-	Error      string
-	MaxSizeMB  int64
+	Token          string
+	FolderName     string
+	Nickname       string // empty until the visitor has chosen one
+	Error          string
+	MaxSizeMB      int64
+	MaxVideoSizeMB int64
 }
 
 type uploadResult struct {
@@ -78,7 +79,7 @@ func (s *Server) uploadPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) renderUploadPage(w http.ResponseWriter, r *http.Request, l sqlc.GetUploadLinkByTokenRow, nick, errMsg string, status int) {
 	s.page(w, r, status, "upload", l.FolderName, UploadPage{
 		Token: l.Token, FolderName: l.FolderName, Nickname: nick, Error: errMsg,
-		MaxSizeMB: s.cfg.UploadMaxFileSize >> 20,
+		MaxSizeMB: s.cfg.UploadMaxFileSize >> 20, MaxVideoSizeMB: s.cfg.UploadMaxVideoSize >> 20,
 	})
 }
 
@@ -150,4 +151,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{"results": v})
+}
+
+// maxUploadSize is the largest file an upload may be, image or video.
+func (s *Server) maxUploadSize() int64 {
+	return max(s.cfg.UploadMaxFileSize, s.cfg.UploadMaxVideoSize)
 }

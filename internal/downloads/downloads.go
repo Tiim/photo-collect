@@ -42,14 +42,14 @@ type Export struct {
 	Files      []File
 }
 
-// File is one exported photo and its sidecar.
+// File is one exported photo and its sidecar, or a video (without sidecar).
 type File struct {
 	ImageID  string
 	Name     string // stable per image, see EnsureNames
 	Size     int64
 	SHA256   string
 	Modified time.Time // upload time
-	XMP      []byte
+	XMP      []byte    // nil for videos
 }
 
 // XMPName is the name of the photo's sidecar: the photo's name with .xmp as
@@ -105,10 +105,14 @@ func (s *Service) Prepare(ctx context.Context, folderID string, imageIDs []strin
 			x.HasGPS, x.Lat, x.Lon = true, im.GpsLat.Float64, im.GpsLon.Float64
 		}
 		created, _ := database.ParseTime(im.CreatedAt)
-		e.Files = append(e.Files, File{
+		f := File{
 			ImageID: im.ID, Name: im.ExportName.String, Size: im.SizeBytes, SHA256: im.Sha256,
-			Modified: created, XMP: BuildXMP(x),
-		})
+			Modified: created,
+		}
+		if !images.IsVideo(im.MimeType) {
+			f.XMP = BuildXMP(x)
+		}
+		e.Files = append(e.Files, f)
 	}
 	return e, nil
 }
@@ -198,13 +202,15 @@ func (e *Export) entries() []zipEntry {
 	out := make([]zipEntry, 0, 2*len(e.Files))
 	deflate := newDeflater()
 	for _, f := range e.Files {
+		out = append(out, zipEntry{name: e.Dir + "/" + f.Name, comp: f.Size, raw: f.Size})
+		if f.XMP == nil {
+			continue
+		}
 		var c countWriter
 		fw, _ := deflate(&c)
 		fw.Write(f.XMP)
 		fw.Close()
-		out = append(out,
-			zipEntry{name: e.Dir + "/" + f.Name, comp: f.Size, raw: f.Size},
-			zipEntry{name: e.Dir + "/" + f.XMPName(), comp: c.n, raw: int64(len(f.XMP))})
+		out = append(out, zipEntry{name: e.Dir + "/" + f.XMPName(), comp: c.n, raw: int64(len(f.XMP))})
 	}
 	return out
 }
@@ -268,6 +274,9 @@ func (s *Service) WriteZip(ctx context.Context, w io.Writer, e *Export) error {
 		}
 		if err := s.writeOriginal(ctx, zw, e, f); err != nil {
 			return err
+		}
+		if f.XMP == nil {
+			continue
 		}
 		xw, err := zw.CreateHeader(&zip.FileHeader{Name: e.Dir + "/" + f.XMPName(), Method: zip.Deflate, Modified: e.Created})
 		if err != nil {

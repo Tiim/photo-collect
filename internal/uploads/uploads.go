@@ -1,5 +1,7 @@
-// Package uploads ingests uploaded image files: it validates content, stores
-// the untouched original and records the image, its tags and a derivative job.
+// Package uploads ingests uploaded image and video files: it validates
+// content, stores the untouched original and records the image, its tags and
+// a derivative job. Videos are stored in the images table too, told apart by
+// their video/* MIME type.
 package uploads
 
 import (
@@ -32,16 +34,30 @@ var errDuplicateRace = errors.New("uploads: concurrent duplicate upload")
 
 var (
 	ErrTooLarge   = errors.New("file is too large")
-	ErrFolderFull = errors.New("this folder has reached its maximum number of images")
+	ErrFolderFull = errors.New("this folder has reached its maximum number of files")
 	ErrFolderGone = errors.New("folder no longer exists")
 	ErrEmptyFile  = errors.New("file is empty")
 )
 
+// TooLargeError is returned for a file over its size limit. It matches
+// ErrTooLarge with errors.Is.
+type TooLargeError struct {
+	Max int64 // the limit in bytes
+}
+
+func (e *TooLargeError) Error() string        { return fmt.Sprintf("file is too large (max %d bytes)", e.Max) }
+func (e *TooLargeError) Is(target error) bool { return target == ErrTooLarge }
+
 type Limits struct {
-	MaxFileSize        int64
-	MaxImagesPerFolder int
+	MaxFileSize        int64 // per image
+	MaxVideoSize       int64 // per video
+	MaxImagesPerFolder int   // images and videos together
 	MaxPixels          int64
 }
+
+// MaxUploadSize is the largest file any upload may be: the type is only known
+// once the content has been received.
+func (l Limits) MaxUploadSize() int64 { return max(l.MaxFileSize, l.MaxVideoSize) }
 
 type Service struct {
 	db     *database.DB
@@ -70,12 +86,13 @@ func (s *Service) Ingest(ctx context.Context, folderID, nickname, filename strin
 	defer tmp.Close()
 
 	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(tmp, h), io.LimitReader(r, s.limits.MaxFileSize+1))
+	maxSize := s.limits.MaxUploadSize()
+	n, err := io.Copy(io.MultiWriter(tmp, h), io.LimitReader(r, maxSize+1))
 	if err != nil {
 		return nil, err
 	}
-	if n > s.limits.MaxFileSize {
-		return nil, ErrTooLarge
+	if n > maxSize {
+		return nil, &TooLargeError{Max: maxSize}
 	}
 	if n == 0 {
 		return nil, ErrEmptyFile
@@ -85,7 +102,18 @@ func (s *Service) Ingest(ctx context.Context, folderID, nickname, filename strin
 	if err != nil {
 		return nil, err
 	}
-	meta := images.ReadMeta(tmp)
+	video := images.IsVideo(info.MIME)
+	limit := s.limits.MaxFileSize
+	if video {
+		limit = s.limits.MaxVideoSize
+	}
+	if n > limit {
+		return nil, &TooLargeError{Max: limit}
+	}
+	var meta images.Meta
+	if !video { // capture time and GPS of videos are not read
+		meta = images.ReadMeta(tmp)
+	}
 	deviceKey := meta.DeviceKey(nickname)
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
 		return nil, err

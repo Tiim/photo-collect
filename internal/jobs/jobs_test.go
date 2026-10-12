@@ -3,6 +3,7 @@ package jobs_test
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -377,5 +378,88 @@ func TestExtractGPSBackfill(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if n := missing(); n != 0 {
 		t.Fatalf("missing after backfill = %d", n)
+	}
+}
+
+// panicProcessor fails the test if a video ever reaches the decoder.
+type panicProcessor struct{ images.Processor }
+
+func (panicProcessor) Derive(context.Context, io.Reader, string) (*images.Derived, error) {
+	panic("video handed to Derive")
+}
+
+func (panicProcessor) ScanClock(context.Context, io.Reader, string) (*images.ClockReading, error) {
+	panic("video handed to ScanClock")
+}
+
+// Videos skip derivation, the clock scan and the GPS lookup: every job
+// finishes on its first attempt and no backfill lists the video again.
+func TestVideoJobsAreSkipped(t *testing.T) {
+	db := open(t)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store, err := filesystem.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if _, err := db.Exec(`INSERT INTO folders (id, name) VALUES ('f1', 'F')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO images (id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname)
+		VALUES ('v', 'f1', 'clip.mov', 'video/quicktime', 1, 0, 0, 'v', 'n')`); err != nil {
+		t.Fatal(err)
+	}
+	data := imagetest.Video("qt  ", []string{"qt  "}, 100)
+	if err := store.Put(ctx, storage.OriginalKey("f1", "v"), bytes.NewReader(data), int64(len(data)), "video/quicktime"); err != nil {
+		t.Fatal(err)
+	}
+
+	q := jobs.New(db, log)
+	(&jobs.Handlers{DB: db, Store: store, Processor: panicProcessor{}, Queue: q, Log: log}).Register(q)
+	if ids, _ := db.Q.ListImagesMissingGPS(ctx); len(ids) != 1 {
+		t.Fatalf("GPS backfill lists %v before the job", ids)
+	}
+	q.Enqueue(ctx, db.Q, jobs.TypeDeriveImage, jobs.DerivePayload{ImageID: "v"})
+	q.Enqueue(ctx, db.Q, jobs.TypeAnalyzeImage, jobs.AnalyzePayload{ImageID: "v"})
+	q.Enqueue(ctx, db.Q, jobs.TypeExtractGPS, jobs.ExtractGPSPayload{ImageID: "v"})
+	go q.Run(ctx, 2)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var done, other int
+		db.QueryRow("SELECT COUNT(*) FROM jobs WHERE status = 'done' AND attempts = 1").Scan(&done)
+		db.QueryRow("SELECT COUNT(*) FROM jobs WHERE status != 'done' OR attempts != 1").Scan(&other)
+		if done == 3 {
+			break
+		}
+		if time.Now().After(deadline) {
+			rows, _ := db.Query("SELECT type, status, attempts, COALESCE(error, '') FROM jobs")
+			for rows.Next() {
+				var typ, status, msg string
+				var attempts int
+				rows.Scan(&typ, &status, &attempts, &msg)
+				t.Logf("%s: %s after %d attempts %s", typ, status, attempts, msg)
+			}
+			rows.Close()
+			t.Fatalf("%d jobs done, %d not", done, other)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	var thumb, preview, scanned int
+	var phashAttempted, gpsAttempted sql.NullString
+	if err := db.QueryRow("SELECT thumbnail_ready, preview_ready, qr_scanned, phash_attempted_at, gps_attempted_at FROM images WHERE id = 'v'").
+		Scan(&thumb, &preview, &scanned, &phashAttempted, &gpsAttempted); err != nil {
+		t.Fatal(err)
+	}
+	if thumb != 0 || preview != 0 || scanned != 1 || !phashAttempted.Valid || !gpsAttempted.Valid {
+		t.Fatalf("thumbnail %d preview %d scanned %d phash attempted %v gps attempted %v", thumb, preview, scanned, phashAttempted, gpsAttempted)
+	}
+	if rows, _ := db.Q.ListImagesMissingPHash(ctx); len(rows) != 0 {
+		t.Fatalf("pHash backfill still lists %v", rows)
+	}
+	if ids, _ := db.Q.ListImagesMissingGPS(ctx); len(ids) != 0 {
+		t.Fatalf("GPS backfill still lists %v", ids)
 	}
 }

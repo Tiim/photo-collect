@@ -65,7 +65,7 @@ func setupWith(t *testing.T, mutate func(*config.Config), log *slog.Logger) *env
 	}
 	cfg := &config.Config{
 		BaseURL: "http://example.test", SessionSecret: strings.Repeat("s", 32), SessionTTL: time.Hour,
-		UploadMaxFileSize: 1 << 20, UploadMaxImagesPerFolder: 3, UploadMaxPixels: 60_000_000,
+		UploadMaxFileSize: 1 << 20, UploadMaxVideoSize: 2 << 20, UploadMaxImagesPerFolder: 3, UploadMaxPixels: 60_000_000,
 		UploadLinkDuration: 24 * time.Hour, ThumbnailSize: 40, PreviewSize: 80,
 	}
 	if mutate != nil {
@@ -76,7 +76,7 @@ func setupWith(t *testing.T, mutate func(*config.Config), log *slog.Logger) *env
 	queue := jobs.New(db, log)
 	(&jobs.Handlers{DB: db, Store: store, Processor: images.NewGoProcessor(40, 80, 1), Queue: queue, Log: log}).Register(queue)
 	dl := downloads.New(db, store, log)
-	up := uploads.New(db, store, queue, uploads.Limits{MaxFileSize: cfg.UploadMaxFileSize, MaxImagesPerFolder: cfg.UploadMaxImagesPerFolder, MaxPixels: cfg.UploadMaxPixels}, log)
+	up := uploads.New(db, store, queue, uploads.Limits{MaxFileSize: cfg.UploadMaxFileSize, MaxVideoSize: cfg.UploadMaxVideoSize, MaxImagesPerFolder: cfg.UploadMaxImagesPerFolder, MaxPixels: cfg.UploadMaxPixels}, log)
 	if cfg.UploadChunkSize == 0 {
 		cfg.UploadChunkSize = 64 << 10
 	}

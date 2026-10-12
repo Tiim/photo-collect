@@ -35,12 +35,13 @@ The container persists everything under `/data` (`photos.db`, `photos/`).
 | `TRUSTED_PROXIES` | – (trust nothing) | Comma-separated IPs/CIDRs of reverse proxies whose `X-Forwarded-For` is believed; `private` means RFC 1918, loopback and IPv6 ULA. Used to determine the client IP for logs and rate limits; `BASE_URL` stays the source of truth for links, cookies and the origin check |
 | `SESSION_SECRET` | – (required, ≥32 chars) | Signs the nickname and login-state cookies |
 | `SESSION_TTL` | `720h` | Session lifetime (sliding) |
-| `UPLOAD_MAX_FILE_SIZE` | `52428800` | Bytes per file |
-| `UPLOAD_MAX_IMAGES_PER_FOLDER` | `5000` | |
+| `UPLOAD_MAX_FILE_SIZE` | `52428800` | Bytes per image |
+| `UPLOAD_MAX_VIDEO_SIZE` | `2147483648` | Bytes per video (MP4, MOV). Videos are stored and exported as uploaded, without thumbnails or playback |
+| `UPLOAD_MAX_IMAGES_PER_FOLDER` | `5000` | Images and videos together |
 | `UPLOAD_MAX_PIXELS` | `60000000` | Maximum pixels (width x height) per image. Peak decode memory is about `WORKER_COUNT` x 4 bytes x pixels, i.e. ~240 MB per worker at the default |
 | `UPLOAD_MAX_CONCURRENT` | `2 x WORKER_COUNT` | Upload requests ingested at the same time; further requests get `503` with `Retry-After` and the upload page retries them |
 | `UPLOAD_CHUNK_SIZE` | `524288` | Bytes per request when the upload page sends a file. Files are uploaded in chunks that resume after a dropped connection. Smaller chunks suit slow connections (each chunk must get through before a proxy timeout, see below); keep this at or below your reverse proxy's request body limit (nginx: `client_max_body_size`, default 1 MiB) |
-| `UPLOAD_MAX_PENDING` | `64` | Chunked uploads started but not yet finished (each holds up to `UPLOAD_MAX_FILE_SIZE` on local temp disk). Further starts get `503` and the upload page retries them. Uploads idle for 2 hours are discarded |
+| `UPLOAD_MAX_PENDING` | `64` | Chunked uploads started but not yet finished (each holds up to the larger of `UPLOAD_MAX_FILE_SIZE` and `UPLOAD_MAX_VIDEO_SIZE` on local temp disk). Further starts get `503` and the upload page retries them. Uploads idle for 2 hours are discarded |
 | `RATE_UPLOAD_PER_IP` / `RATE_UPLOAD_PER_LINK` | `100` / `300` | Requests per minute on the anonymous `/upload/...` routes, per client IP (IPv6: per /64) and per upload link. Chunk requests of an already started upload are not counted. `0` disables the limit |
 | `RATE_AUTH_PER_IP` | `10` | Requests per minute per IP on `/auth/login` and `/auth/callback` |
 | `RATE_NICKNAME_PER_IP` | `5` | Nickname changes per minute per IP |
@@ -104,6 +105,9 @@ Restrict who may sign in with an Authentik policy/group binding on the applicati
   (Leaflet, loaded by `map.js`) are revalidated via `ETag` on every use.
 - Originals are stored untouched (bytes and EXIF). Thumbnails/previews are JPEG derivatives
   made by a background worker; HEIC is decoded in pure Go via WASM (no cgo).
+- Videos (MP4, MOV, detected by content) share the `images` table and are told apart by their
+  `video/*` MIME type. They are never decoded: no thumbnail, preview, capture time, GPS or clock
+  QR scan, and exports contain the original without an XMP sidecar.
 - Camera clocks: the start page (`/`) shows the time as text and QR code. Photograph it with each
   camera and upload the photo like any other: the uploader's photos from that camera (same nickname,
   make and model) then get a corrected capture time, shown in the image details and written to the

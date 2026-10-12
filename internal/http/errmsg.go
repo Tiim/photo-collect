@@ -52,7 +52,11 @@ func (s *Server) errText(r *http.Request, err error) (string, bool) {
 	case errors.Is(err, library.ErrNothingSelected):
 		return loc.T("err.select_one"), true
 	case errors.Is(err, uploads.ErrTooLarge):
-		return loc.T("err.upload.too_large", map[string]any{"MB": s.cfg.UploadMaxFileSize >> 20}), true
+		limit := s.cfg.UploadMaxFileSize
+		if tl := (*uploads.TooLargeError)(nil); errors.As(err, &tl) {
+			limit = tl.Max
+		}
+		return loc.T("err.upload.too_large", map[string]any{"MB": limit >> 20}), true
 	case errors.Is(err, uploads.ErrFolderFull):
 		return loc.T("err.upload.folder_full"), true
 	case errors.Is(err, uploads.ErrFolderGone):
