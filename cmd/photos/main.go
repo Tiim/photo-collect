@@ -151,29 +151,6 @@ func backfillGPS(ctx context.Context, db *database.DB, queue *jobs.Queue, log *s
 	return nil
 }
 
-// removeLegacyExports deletes the ZIP files that older versions built in dir,
-// and dir itself once it is empty. Other files are left alone.
-func removeLegacyExports(dir string, log *slog.Logger) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	removed := 0
-	for _, en := range entries {
-		if n := en.Name(); !en.IsDir() && (strings.HasSuffix(n, ".zip") || strings.HasSuffix(n, ".zip.tmp")) {
-			if err := os.Remove(filepath.Join(dir, n)); err != nil {
-				log.Warn("remove old export", "file", n, "err", err)
-				continue
-			}
-			removed++
-		}
-	}
-	if removed > 0 {
-		log.Info("removed old ZIP exports", "dir", dir, "count", removed)
-	}
-	_ = os.Remove(dir) // fails unless empty
-}
-
 func serve(log *slog.Logger) error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -232,7 +209,6 @@ func serve(log *slog.Logger) error {
 	if err := backfillGPS(ctx, db, queue, log); err != nil {
 		return fmt.Errorf("backfill GPS positions: %w", err)
 	}
-	removeLegacyExports(cfg.LegacyExportDir, log)
 	dl := downloads.New(db, store, log)
 	up := uploads.New(db, store, queue, uploads.Limits{
 		MaxFileSize: cfg.UploadMaxFileSize, MaxImagesPerFolder: cfg.UploadMaxImagesPerFolder,

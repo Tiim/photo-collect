@@ -154,8 +154,8 @@ Restrict who may sign in with an Authentik policy/group binding on the applicati
   rewrites only the sidecars whose ratings, tags, time or position changed, so it doubles as
   resume and incremental sync. Each photo keeps the same file name in every export (assigned once,
   in upload order, with `_2`, `_3`, … for duplicate names). The file list is at
-  `GET /folders/<id>/export.json` (same selection parameters as the ZIP). Upgrading removes old
-  ZIP files from `EXPORT_DIR` (default `/data/exports`); the `EXPORT_*` variables are no longer used.
+  `GET /folders/<id>/export.json` (same selection parameters as the ZIP). The `EXPORT_*`
+  variables are no longer used; old ZIPs in `/data/exports` can be deleted by hand.
 - Storage keys are generated IDs (`folders/<folder>/images/<image>/original|preview|thumbnail`).
 - Deleting a folder hides it immediately and queues a retryable job that removes all objects,
   then the database rows.

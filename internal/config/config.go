@@ -68,9 +68,6 @@ type Config struct {
 	PreviewSize   int
 
 	WorkerCount int
-	// LegacyExportDir is where older versions built ZIP exports. Exports are
-	// streamed now; files left there are removed at startup.
-	LegacyExportDir string
 }
 
 // Load reads configuration from the environment and validates it.
@@ -120,8 +117,7 @@ func Load() (*Config, error) {
 		ThumbnailSize: int(e.int64("THUMBNAIL_SIZE", 400)),
 		PreviewSize:   int(e.int64("PREVIEW_SIZE", 1600)),
 
-		WorkerCount:     int(e.int64("WORKER_COUNT", 2)),
-		LegacyExportDir: e.str("EXPORT_DIR", "/data/exports"),
+		WorkerCount: int(e.int64("WORKER_COUNT", 2)),
 	}
 	c.UploadMaxConcurrent = int(e.int64("UPLOAD_MAX_CONCURRENT", int64(2*c.WorkerCount)))
 	if v := e.str("TRUSTED_PROXIES", ""); v != "" {
