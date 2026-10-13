@@ -100,14 +100,18 @@ func (h *Handlers) deriveImage(ctx context.Context, raw json.RawMessage) error {
 	if !d.PHashOK {
 		return h.DB.Q.MarkPHashAttempted(ctx, sqlc.MarkPHashAttemptedParams{PhashAttemptedAt: attempted, ID: img.ID})
 	}
-	if err := h.DB.Q.SetImagePHash(ctx, sqlc.SetImagePHashParams{
-		Phash: sql.NullInt64{Int64: int64(d.PHash), Valid: true}, PhashAttemptedAt: attempted, ID: img.ID,
-	}); err != nil {
-		return err
-	}
 	// Debounce the folder's duplicate scan again now that this image's hash
-	// is actually available, in case the scan already fired earlier.
-	return h.Queue.ScheduleFolderScan(ctx, h.DB.Q, img.FolderID)
+	// is actually available, in case the scan already fired earlier. Both
+	// happen in one transaction so a stored hash always implies the scan has
+	// already been (re)scheduled for it.
+	return h.DB.InTx(ctx, func(q *sqlc.Queries) error {
+		if err := q.SetImagePHash(ctx, sqlc.SetImagePHashParams{
+			Phash: sql.NullInt64{Int64: int64(d.PHash), Valid: true}, PhashAttemptedAt: attempted, ID: img.ID,
+		}); err != nil {
+			return err
+		}
+		return h.Queue.ScheduleFolderScan(ctx, q, img.FolderID)
+	})
 }
 
 // extractGPS reads the EXIF position of an image that was uploaded before
