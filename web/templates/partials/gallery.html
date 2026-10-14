@@ -19,6 +19,13 @@
       {{range seq 1 5}}<option value="{{.}}"{{if eq $.F.RatingMin .}} selected{{end}}>{{t "filter.rating_min" (dict "N" .)}}</option>{{end}}
     </select>
   </label>
+  <label>{{t "filter.media"}}
+    <select name="media">
+      <option value="">{{t "filter.media_all"}}</option>
+      <option value="photo"{{if eq .F.Media "photo"}} selected{{end}}>{{t "filter.media_photo"}}</option>
+      <option value="video"{{if eq .F.Media "video"}} selected{{end}}>{{t "filter.media_video"}}</option>
+    </select>
+  </label>
   <label>{{t "filter.uploader"}}
     <select name="uploader">
       <option value="">{{t "filter.everyone"}}</option>

@@ -30,6 +30,9 @@ const (
 	DirAsc  = "asc"
 	DirDesc = "desc"
 
+	MediaPhoto = "photo"
+	MediaVideo = "video"
+
 	ModeAll = "all"
 	ModeAny = "any"
 
@@ -52,6 +55,7 @@ type Filter struct {
 	Device    string // device_key (uploader + camera)
 	From, To  string // YYYY-MM-DD on the corrected capture time, "" = unset
 	HasGPS    bool
+	Media     string // MediaPhoto, MediaVideo or "" for both
 	Sort      string
 	Dir       string
 }
@@ -62,7 +66,7 @@ func Default() Filter { return Filter{TagMode: ModeAll, Sort: SortCaptured, Dir:
 // Active reports whether any filter (not just the sort order) is set.
 func (f Filter) Active() bool {
 	return len(f.Tags) > 0 || f.RatingMin > 0 || f.RatingMax > 0 || f.Uploader != "" || f.Device != "" ||
-		f.From != "" || f.To != "" || f.HasGPS
+		f.From != "" || f.To != "" || f.HasGPS || f.Media != ""
 }
 
 // Parse validates the filter query parameters. Empty values count as unset, so
@@ -138,6 +142,14 @@ func Parse(v url.Values) (Filter, error) {
 		return f, bad("filter.bad_has_gps", "Invalid value for has_gps")
 	}
 
+	switch m := v.Get("media"); m {
+	case "":
+	case MediaPhoto, MediaVideo:
+		f.Media = m
+	default:
+		return f, bad("filter.bad_media", fmt.Sprintf("Unknown media type %q", m))
+	}
+
 	switch s := v.Get("sort"); s {
 	case "":
 	case SortUploaded, SortCaptured, SortRating:
@@ -209,6 +221,9 @@ func (f Filter) Encode() url.Values {
 	if f.HasGPS {
 		v.Set("has_gps", "1")
 	}
+	if f.Media != "" {
+		v.Set("media", f.Media)
+	}
 	if f.Sort != SortCaptured {
 		v.Set("sort", f.Sort)
 	}
@@ -268,7 +283,7 @@ func (f Filter) ListParams(folderID string, after *Cursor, pageSize int64) sqlc.
 	p := sqlc.ListImagesFilteredParams{
 		Sort: f.Sort, Dir: f.Dir, FolderID: folderID, PageSize: pageSize,
 		RatingMin: nullInt(f.RatingMin), RatingMax: nullInt(f.RatingMax), Uploader: nullStr(f.Uploader), Device: nullStr(f.Device),
-		FromTime: from, ToTime: to, HasGps: f.hasGPS(), Tags: tags, TagsNeeded: need,
+		FromTime: from, ToTime: to, HasGps: f.hasGPS(), Media: nullStr(f.Media), Tags: tags, TagsNeeded: need,
 	}
 	if after != nil {
 		p.AfterKey = sql.NullString{String: after.Key, Valid: true}
@@ -282,7 +297,7 @@ func (f Filter) CountParams(folderID string) sqlc.CountImagesFilteredParams {
 	p := f.ListParams(folderID, nil, 0)
 	return sqlc.CountImagesFilteredParams{
 		FolderID: p.FolderID, RatingMin: p.RatingMin, RatingMax: p.RatingMax, Uploader: p.Uploader, Device: p.Device,
-		FromTime: p.FromTime, ToTime: p.ToTime, HasGps: p.HasGps, Tags: p.Tags, TagsNeeded: p.TagsNeeded,
+		FromTime: p.FromTime, ToTime: p.ToTime, HasGps: p.HasGps, Media: p.Media, Tags: p.Tags, TagsNeeded: p.TagsNeeded,
 	}
 }
 
@@ -291,7 +306,7 @@ func (f Filter) RefsParams(folderID string, maxRows int64) sqlc.ListFilteredRefs
 	p := f.ListParams(folderID, nil, 0)
 	return sqlc.ListFilteredRefsParams{
 		FolderID: p.FolderID, RatingMin: p.RatingMin, RatingMax: p.RatingMax, Uploader: p.Uploader, Device: p.Device,
-		FromTime: p.FromTime, ToTime: p.ToTime, HasGps: p.HasGps, Tags: p.Tags, TagsNeeded: p.TagsNeeded,
+		FromTime: p.FromTime, ToTime: p.ToTime, HasGps: p.HasGps, Media: p.Media, Tags: p.Tags, TagsNeeded: p.TagsNeeded,
 		MaxRows: maxRows,
 	}
 }

@@ -3,6 +3,7 @@
 --
 --   tags         JSON array of tag names; an image needs `tags_needed` of them
 --                (all of them for "all", 1 for "any").
+--   media        'photo' | 'video' (NULL = both).
 --   device       device_key (uploader + camera) to match exactly.
 --   from_time / to_time
 --                bounds on the effective capture time (manual time, else corrected EXIF time), "YYYY-MM-DD HH:MM:SS".
@@ -31,6 +32,7 @@ SELECT * FROM (
   AND (CAST(sqlc.narg(from_time) AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) >= CAST(sqlc.narg(from_time) AS TEXT))
   AND (CAST(sqlc.narg(to_time) AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) <= CAST(sqlc.narg(to_time) AS TEXT))
   AND (CAST(sqlc.narg(has_gps) AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
+  AND (CAST(sqlc.narg(media) AS TEXT) IS NULL OR (CAST(sqlc.narg(media) AS TEXT) = 'video') = (i.mime_type LIKE 'video/%'))
   AND (CAST(sqlc.narg(tags) AS TEXT) IS NULL OR (
         SELECT COUNT(DISTINCT t.id) FROM image_tags it JOIN tags t ON t.id = it.tag_id
         WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(sqlc.narg(tags) AS TEXT)))
@@ -56,6 +58,7 @@ WHERE i.folder_id = sqlc.arg(folder_id)
   AND (CAST(sqlc.narg(from_time) AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) >= CAST(sqlc.narg(from_time) AS TEXT))
   AND (CAST(sqlc.narg(to_time) AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) <= CAST(sqlc.narg(to_time) AS TEXT))
   AND (CAST(sqlc.narg(has_gps) AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
+  AND (CAST(sqlc.narg(media) AS TEXT) IS NULL OR (CAST(sqlc.narg(media) AS TEXT) = 'video') = (i.mime_type LIKE 'video/%'))
   AND (CAST(sqlc.narg(tags) AS TEXT) IS NULL OR (
         SELECT COUNT(DISTINCT t.id) FROM image_tags it JOIN tags t ON t.id = it.tag_id
         WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(sqlc.narg(tags) AS TEXT)))
@@ -73,6 +76,7 @@ WHERE i.folder_id = sqlc.arg(folder_id)
   AND (CAST(sqlc.narg(from_time) AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) >= CAST(sqlc.narg(from_time) AS TEXT))
   AND (CAST(sqlc.narg(to_time) AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) <= CAST(sqlc.narg(to_time) AS TEXT))
   AND (CAST(sqlc.narg(has_gps) AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
+  AND (CAST(sqlc.narg(media) AS TEXT) IS NULL OR (CAST(sqlc.narg(media) AS TEXT) = 'video') = (i.mime_type LIKE 'video/%'))
   AND (CAST(sqlc.narg(tags) AS TEXT) IS NULL OR (
         SELECT COUNT(DISTINCT t.id) FROM image_tags it JOIN tags t ON t.id = it.tag_id
         WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(sqlc.narg(tags) AS TEXT)))

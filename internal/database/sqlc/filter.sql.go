@@ -21,10 +21,11 @@ WHERE i.folder_id = ?1
   AND (CAST(?6 AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) >= CAST(?6 AS TEXT))
   AND (CAST(?7 AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) <= CAST(?7 AS TEXT))
   AND (CAST(?8 AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
-  AND (CAST(?9 AS TEXT) IS NULL OR (
+  AND (CAST(?9 AS TEXT) IS NULL OR (CAST(?9 AS TEXT) = 'video') = (i.mime_type LIKE 'video/%'))
+  AND (CAST(?10 AS TEXT) IS NULL OR (
         SELECT COUNT(DISTINCT t.id) FROM image_tags it JOIN tags t ON t.id = it.tag_id
-        WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(?9 AS TEXT)))
-      ) >= ?10)
+        WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(?10 AS TEXT)))
+      ) >= ?11)
 `
 
 type CountImagesFilteredParams struct {
@@ -36,6 +37,7 @@ type CountImagesFilteredParams struct {
 	FromTime   sql.NullString
 	ToTime     sql.NullString
 	HasGps     sql.NullInt64
+	Media      sql.NullString
 	Tags       sql.NullString
 	TagsNeeded int64
 }
@@ -50,6 +52,7 @@ func (q *Queries) CountImagesFiltered(ctx context.Context, arg CountImagesFilter
 		arg.FromTime,
 		arg.ToTime,
 		arg.HasGps,
+		arg.Media,
 		arg.Tags,
 		arg.TagsNeeded,
 	)
@@ -69,12 +72,13 @@ WHERE i.folder_id = ?1
   AND (CAST(?6 AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) >= CAST(?6 AS TEXT))
   AND (CAST(?7 AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) <= CAST(?7 AS TEXT))
   AND (CAST(?8 AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
-  AND (CAST(?9 AS TEXT) IS NULL OR (
+  AND (CAST(?9 AS TEXT) IS NULL OR (CAST(?9 AS TEXT) = 'video') = (i.mime_type LIKE 'video/%'))
+  AND (CAST(?10 AS TEXT) IS NULL OR (
         SELECT COUNT(DISTINCT t.id) FROM image_tags it JOIN tags t ON t.id = it.tag_id
-        WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(?9 AS TEXT)))
-      ) >= ?10)
+        WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(?10 AS TEXT)))
+      ) >= ?11)
 ORDER BY i.seq
-LIMIT ?11
+LIMIT ?12
 `
 
 type ListFilteredRefsParams struct {
@@ -86,6 +90,7 @@ type ListFilteredRefsParams struct {
 	FromTime   sql.NullString
 	ToTime     sql.NullString
 	HasGps     sql.NullInt64
+	Media      sql.NullString
 	Tags       sql.NullString
 	TagsNeeded int64
 	MaxRows    int64
@@ -108,6 +113,7 @@ func (q *Queries) ListFilteredRefs(ctx context.Context, arg ListFilteredRefsPara
 		arg.FromTime,
 		arg.ToTime,
 		arg.HasGps,
+		arg.Media,
 		arg.Tags,
 		arg.TagsNeeded,
 		arg.MaxRows,
@@ -180,19 +186,20 @@ SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, heig
   AND (CAST(?8 AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) >= CAST(?8 AS TEXT))
   AND (CAST(?9 AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) <= CAST(?9 AS TEXT))
   AND (CAST(?10 AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
-  AND (CAST(?11 AS TEXT) IS NULL OR (
+  AND (CAST(?11 AS TEXT) IS NULL OR (CAST(?11 AS TEXT) = 'video') = (i.mime_type LIKE 'video/%'))
+  AND (CAST(?12 AS TEXT) IS NULL OR (
         SELECT COUNT(DISTINCT t.id) FROM image_tags it JOIN tags t ON t.id = it.tag_id
-        WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(?11 AS TEXT)))
-      ) >= ?12)
+        WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(?12 AS TEXT)))
+      ) >= ?13)
 ) AS f
-WHERE CAST(?13 AS INTEGER) IS NULL
-   OR (NOT f.is_desc AND (f.sort_key, f.seq) > (CAST(?14 AS TEXT), CAST(?13 AS INTEGER)))
-   OR (f.is_desc AND (f.sort_key, f.seq) < (CAST(?14 AS TEXT), CAST(?13 AS INTEGER)))
+WHERE CAST(?14 AS INTEGER) IS NULL
+   OR (NOT f.is_desc AND (f.sort_key, f.seq) > (CAST(?15 AS TEXT), CAST(?14 AS INTEGER)))
+   OR (f.is_desc AND (f.sort_key, f.seq) < (CAST(?15 AS TEXT), CAST(?14 AS INTEGER)))
 ORDER BY CASE WHEN NOT f.is_desc THEN f.sort_key END ASC,
          CASE WHEN f.is_desc THEN f.sort_key END DESC,
          CASE WHEN NOT f.is_desc THEN f.seq END ASC,
          CASE WHEN f.is_desc THEN f.seq END DESC
-LIMIT ?15
+LIMIT ?16
 `
 
 type ListImagesFilteredParams struct {
@@ -206,6 +213,7 @@ type ListImagesFilteredParams struct {
 	FromTime   sql.NullString
 	ToTime     sql.NullString
 	HasGps     sql.NullInt64
+	Media      sql.NullString
 	Tags       sql.NullString
 	TagsNeeded int64
 	AfterSeq   sql.NullInt64
@@ -253,6 +261,7 @@ type ListImagesFilteredRow struct {
 //
 //	tags         JSON array of tag names; an image needs `tags_needed` of them
 //	             (all of them for "all", 1 for "any").
+//	media        'photo' | 'video' (NULL = both).
 //	device       device_key (uploader + camera) to match exactly.
 //	from_time / to_time
 //	             bounds on the effective capture time (manual time, else corrected EXIF time), "YYYY-MM-DD HH:MM:SS".
@@ -275,6 +284,7 @@ func (q *Queries) ListImagesFiltered(ctx context.Context, arg ListImagesFiltered
 		arg.FromTime,
 		arg.ToTime,
 		arg.HasGps,
+		arg.Media,
 		arg.Tags,
 		arg.TagsNeeded,
 		arg.AfterSeq,
