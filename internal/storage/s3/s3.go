@@ -80,6 +80,22 @@ func (s *Store) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 	return out.Body, nil
 }
 
+func (s *Store) GetRange(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
+	if err := storage.ValidateKey(key); err != nil {
+		return nil, err
+	}
+	rng := fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)
+	out, err := s.client.GetObject(ctx, &awss3.GetObjectInput{Bucket: &s.bucket, Key: &key, Range: &rng})
+	if err != nil {
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) {
+			return nil, storage.ErrNotFound
+		}
+		return nil, err
+	}
+	return out.Body, nil
+}
+
 func (s *Store) Delete(ctx context.Context, key string) error {
 	if err := storage.ValidateKey(key); err != nil {
 		return err

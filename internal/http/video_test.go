@@ -3,6 +3,9 @@ package http_test
 import (
 	"bytes"
 	"crypto/sha256"
+	"fmt"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -64,7 +67,7 @@ func TestVideoUploadGalleryAndExport(t *testing.T) {
 		t.Errorf("no video tile:\n%s", page)
 	}
 	detail := e.authed("GET", "/images/"+id, nil).Body.String()
-	if !strings.Contains(detail, "placeholder video") || !strings.Contains(detail, "/images/"+id+"/original?download=1") || strings.Contains(detail, "/preview") {
+	if !strings.Contains(detail, `<video controls`) || !strings.Contains(detail, `src="/images/`+id+`/original"`) || !strings.Contains(detail, "/images/"+id+"/original?download=1") || strings.Contains(detail, "/preview") {
 		t.Errorf("detail:\n%s", detail)
 	}
 
@@ -94,5 +97,64 @@ func TestVideoUploadGalleryAndExport(t *testing.T) {
 	}
 	if n := e.scalar("SELECT COUNT(*) FROM images"); n != 0 {
 		t.Fatalf("%d rows after purge", n)
+	}
+}
+
+func TestOriginalRangeRequests(t *testing.T) {
+	e := setup(t)
+	token, _ := e.newLink("Wedding")
+	nick := e.do("POST", "/upload/"+token+"/nickname", strings.NewReader("nickname=Bob"), form).Result().Cookies()[0]
+	video := imagetest.Video("qt  ", []string{"qt  "}, 1500<<10)
+	if code, res := e.upload(token, nick, "IMG_0001.MOV", video); code != 200 || res[0]["ok"] != true {
+		t.Fatalf("upload: %d %v", code, res)
+	}
+	var id string
+	e.db.QueryRow("SELECT id FROM images").Scan(&id)
+	path := "/images/" + id + "/original"
+	size := len(video)
+
+	get := func(hdr map[string]string) *httptest.ResponseRecorder {
+		return e.do("GET", path, nil, hdr, e.cookie)
+	}
+	full := get(nil)
+	if full.Code != 200 || full.Header().Get("Accept-Ranges") != "bytes" || !bytes.Equal(full.Body.Bytes(), video) {
+		t.Fatalf("full: %d %q", full.Code, full.Header().Get("Accept-Ranges"))
+	}
+	etag := full.Header().Get("ETag")
+
+	for _, c := range []struct {
+		rng        string
+		start, end int
+	}{
+		{"bytes=0-9", 0, 9},
+		{"bytes=10-", 10, size - 1},
+		{"bytes=-5", size - 5, size - 1},
+		{"bytes=100-99999999", 100, size - 1},
+	} {
+		rec := get(map[string]string{"Range": c.rng})
+		wantCR := fmt.Sprintf("bytes %d-%d/%d", c.start, c.end, size)
+		if rec.Code != 206 || rec.Header().Get("Content-Range") != wantCR ||
+			rec.Header().Get("Content-Length") != strconv.Itoa(c.end-c.start+1) ||
+			!bytes.Equal(rec.Body.Bytes(), video[c.start:c.end+1]) {
+			t.Errorf("%s: %d %q len=%d", c.rng, rec.Code, rec.Header().Get("Content-Range"), rec.Body.Len())
+		}
+	}
+
+	if rec := get(map[string]string{"Range": fmt.Sprintf("bytes=%d-", size)}); rec.Code != 416 || rec.Header().Get("Content-Range") != fmt.Sprintf("bytes */%d", size) {
+		t.Errorf("unsatisfiable: %d %q", rec.Code, rec.Header().Get("Content-Range"))
+	}
+	for _, rng := range []string{"bytes=0-1,5-6", "bytes=abc", "items=0-1", "bytes=9-3"} {
+		if rec := get(map[string]string{"Range": rng}); rec.Code != 200 || rec.Body.Len() != size {
+			t.Errorf("%s: %d len=%d, want full 200", rng, rec.Code, rec.Body.Len())
+		}
+	}
+	if rec := get(map[string]string{"Range": "bytes=0-9", "If-Range": etag}); rec.Code != 206 {
+		t.Errorf("If-Range match: %d", rec.Code)
+	}
+	if rec := get(map[string]string{"Range": "bytes=0-9", "If-Range": `"other"`}); rec.Code != 200 || rec.Body.Len() != size {
+		t.Errorf("If-Range mismatch: %d", rec.Code)
+	}
+	if rec := e.do("GET", path, nil, map[string]string{"Range": "bytes=0-9"}); rec.Code == 200 || rec.Code == 206 {
+		t.Errorf("anonymous range: %d", rec.Code)
 	}
 }

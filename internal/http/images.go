@@ -162,7 +162,33 @@ func (s *Server) imageFile(kind string) http.HandlerFunc {
 			return
 		}
 
-		rc, err := s.store.Get(r.Context(), key)
+		// Originals support single byte ranges so browsers can stream and seek videos.
+		status := http.StatusOK
+		var start, n int64
+		ranged := false
+		if kind == "original" {
+			w.Header().Set("Accept-Ranges", "bytes")
+			if rh := r.Header.Get("Range"); rh != "" && ifRangeOK(r.Header.Get("If-Range"), etag) {
+				st, en, res := parseRange(rh, length)
+				switch res {
+				case rangeUnsatisfiable:
+					w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", length))
+					w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+					return
+				case rangeOK:
+					ranged, start, n, status = true, st, en-st+1, http.StatusPartialContent
+					w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", st, en, length))
+				}
+			}
+		}
+
+		var rc io.ReadCloser
+		var err error
+		if ranged {
+			rc, err = s.store.GetRange(r.Context(), key, start, n)
+		} else {
+			rc, err = s.store.Get(r.Context(), key)
+		}
 		if errors.Is(err, storage.ErrNotFound) {
 			http.NotFound(w, r)
 			return
@@ -175,7 +201,10 @@ func (s *Server) imageFile(kind string) http.HandlerFunc {
 		defer rc.Close()
 
 		w.Header().Set("Content-Type", contentType)
-		if length >= 0 {
+		switch {
+		case ranged:
+			w.Header().Set("Content-Length", strconv.FormatInt(n, 10))
+		case length >= 0:
 			w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
 		}
 		if kind == "original" {
@@ -185,8 +214,63 @@ func (s *Server) imageFile(kind string) http.HandlerFunc {
 			}
 			w.Header().Set("Content-Disposition", mime.FormatMediaType(disp, map[string]string{"filename": asciiName(img.OriginalFilename)}))
 		}
+		w.WriteHeader(status)
 		_, _ = io.Copy(w, rc)
 	}
+}
+
+type rangeResult int
+
+const (
+	rangeIgnore rangeResult = iota // malformed or multi-range: serve the full body
+	rangeOK
+	rangeUnsatisfiable
+)
+
+// parseRange parses a single "bytes=" range against size, returning the
+// inclusive first and last byte. Anything it does not understand is ignored,
+// which RFC 9110 permits.
+func parseRange(h string, size int64) (start, end int64, res rangeResult) {
+	spec, ok := strings.CutPrefix(h, "bytes=")
+	if !ok || strings.Contains(spec, ",") {
+		return 0, 0, rangeIgnore
+	}
+	a, b, ok := strings.Cut(strings.TrimSpace(spec), "-")
+	if !ok {
+		return 0, 0, rangeIgnore
+	}
+	if a == "" { // suffix: last b bytes
+		n, err := strconv.ParseInt(b, 10, 64)
+		if err != nil || n < 0 {
+			return 0, 0, rangeIgnore
+		}
+		if n == 0 || size == 0 {
+			return 0, 0, rangeUnsatisfiable
+		}
+		return max(size-n, 0), size - 1, rangeOK
+	}
+	start, err := strconv.ParseInt(a, 10, 64)
+	if err != nil || start < 0 {
+		return 0, 0, rangeIgnore
+	}
+	end = size - 1
+	if b != "" {
+		e, err := strconv.ParseInt(b, 10, 64)
+		if err != nil || e < start {
+			return 0, 0, rangeIgnore
+		}
+		end = min(e, end)
+	}
+	if start >= size {
+		return 0, 0, rangeUnsatisfiable
+	}
+	return start, end, rangeOK
+}
+
+// ifRangeOK reports whether a Range header may be honored given If-Range,
+// which only supports strong ETag validators here.
+func ifRangeOK(ifRange, etag string) bool {
+	return ifRange == "" || ifRange == etag
 }
 
 // etagMatches implements the weak comparison of If-None-Match: the header may

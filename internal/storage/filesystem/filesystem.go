@@ -80,6 +80,32 @@ func (s *Store) Get(_ context.Context, key string) (io.ReadCloser, error) {
 	return f, nil
 }
 
+type limitedFile struct {
+	io.Reader
+	f *os.File
+}
+
+func (l limitedFile) Close() error { return l.f.Close() }
+
+func (s *Store) GetRange(_ context.Context, key string, offset, length int64) (io.ReadCloser, error) {
+	p, err := s.path(key)
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.Open(p)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, storage.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return limitedFile{io.LimitReader(f, length), f}, nil
+}
+
 func (s *Store) Delete(_ context.Context, key string) error {
 	p, err := s.path(key)
 	if err != nil {

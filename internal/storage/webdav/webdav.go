@@ -129,6 +129,24 @@ func (s *Store) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 	return rc, nil
 }
 
+func (s *Store) GetRange(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
+	if err := storage.ValidateKey(key); err != nil {
+		return nil, err
+	}
+	var rc io.ReadCloser
+	err := retry(ctx, func() (err error) {
+		rc, err = s.c.ReadStreamRange(s.remote(key), offset, length)
+		return err
+	})
+	if gowebdav.IsErrNotFound(err) {
+		return nil, storage.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("webdav: get range %s: %w", key, err)
+	}
+	return rc, nil
+}
+
 func (s *Store) Delete(ctx context.Context, key string) error {
 	if err := storage.ValidateKey(key); err != nil {
 		return err

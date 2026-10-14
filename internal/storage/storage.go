@@ -37,6 +37,9 @@ type Store interface {
 	Put(ctx context.Context, key string, r io.Reader, size int64, contentType string) error
 	// Get opens the object. The caller must close the reader.
 	Get(ctx context.Context, key string) (io.ReadCloser, error)
+	// GetRange opens length bytes of the object starting at offset. The caller
+	// must close the reader and has already checked the range against the size.
+	GetRange(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error)
 	// Delete removes the object. Deleting a missing key is not an error.
 	Delete(ctx context.Context, key string) error
 	// List returns all objects whose key has the given prefix, sorted by key.

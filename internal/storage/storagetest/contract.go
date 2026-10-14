@@ -36,6 +36,28 @@ func Run(t *testing.T, s storage.Store) {
 		}
 	})
 
+	t.Run("get range", func(t *testing.T) {
+		data := []byte("0123456789abcdefghij")
+		key := "folders/f1/images/i3/original"
+		if err := s.Put(ctx, key, bytes.NewReader(data), int64(len(data)), ""); err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range []struct{ off, n int64 }{{0, 10}, {5, 5}, {15, 5}, {0, 20}, {19, 1}} {
+			rc, err := s.GetRange(ctx, key, c.off, c.n)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, _ := io.ReadAll(rc)
+			rc.Close()
+			if !bytes.Equal(got, data[c.off:c.off+c.n]) {
+				t.Fatalf("range %d+%d: got %q", c.off, c.n, got)
+			}
+		}
+		if _, err := s.GetRange(ctx, "folders/nope/x", 0, 1); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("want ErrNotFound, got %v", err)
+		}
+	})
+
 	t.Run("overwrite", func(t *testing.T) {
 		key := "folders/f1/images/i2/thumbnail"
 		_ = s.Put(ctx, key, bytes.NewReader([]byte("one")), -1, "")
