@@ -3,9 +3,11 @@
 --
 --   tags         JSON array of tag names; an image needs `tags_needed` of them
 --                (all of them for "all", 1 for "any").
+--   device       device_key (uploader + camera) to match exactly.
 --   from_time / to_time
---                bounds on the corrected capture time, "YYYY-MM-DD HH:MM:SS".
+--                bounds on the effective capture time (manual time, else corrected EXIF time), "YYYY-MM-DD HH:MM:SS".
 --   sort         'uploaded' | 'captured' | 'rating'; dir 'asc' | 'desc'.
+--                Images without a capture time sort last in both directions.
 --   after_key / after_seq
 --                keyset cursor: the sort_key and seq of the last row of the
 --                previous page (both NULL for the first page).
@@ -15,7 +17,7 @@
 -- name: ListImagesFiltered :many
 SELECT * FROM (
   SELECT i.*, CASE CAST(sqlc.arg(sort) AS TEXT)
-      WHEN 'captured' THEN COALESCE(datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))), '')
+      WHEN 'captured' THEN COALESCE(COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))), CASE WHEN CAST(sqlc.arg(dir) AS TEXT) = 'desc' THEN '' ELSE '9999-99-99 99:99:99' END)
       WHEN 'rating' THEN printf('%03d', COALESCE(i.rating, 0))
       ELSE printf('%020d', i.seq) END AS sort_key,
          CAST(sqlc.arg(dir) AS TEXT) = 'desc' AS is_desc
@@ -25,8 +27,9 @@ SELECT * FROM (
   AND (CAST(sqlc.narg(rating_min) AS INTEGER) IS NULL OR i.rating >= CAST(sqlc.narg(rating_min) AS INTEGER))
   AND (CAST(sqlc.narg(rating_max) AS INTEGER) IS NULL OR i.rating <= CAST(sqlc.narg(rating_max) AS INTEGER))
   AND (CAST(sqlc.narg(uploader) AS TEXT) IS NULL OR i.uploader_nickname = CAST(sqlc.narg(uploader) AS TEXT))
-  AND (CAST(sqlc.narg(from_time) AS TEXT) IS NULL OR datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))) >= CAST(sqlc.narg(from_time) AS TEXT))
-  AND (CAST(sqlc.narg(to_time) AS TEXT) IS NULL OR datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))) <= CAST(sqlc.narg(to_time) AS TEXT))
+  AND (CAST(sqlc.narg(device) AS TEXT) IS NULL OR i.device_key = CAST(sqlc.narg(device) AS TEXT))
+  AND (CAST(sqlc.narg(from_time) AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) >= CAST(sqlc.narg(from_time) AS TEXT))
+  AND (CAST(sqlc.narg(to_time) AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) <= CAST(sqlc.narg(to_time) AS TEXT))
   AND (CAST(sqlc.narg(has_gps) AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
   AND (CAST(sqlc.narg(tags) AS TEXT) IS NULL OR (
         SELECT COUNT(DISTINCT t.id) FROM image_tags it JOIN tags t ON t.id = it.tag_id
@@ -49,8 +52,9 @@ WHERE i.folder_id = sqlc.arg(folder_id)
   AND (CAST(sqlc.narg(rating_min) AS INTEGER) IS NULL OR i.rating >= CAST(sqlc.narg(rating_min) AS INTEGER))
   AND (CAST(sqlc.narg(rating_max) AS INTEGER) IS NULL OR i.rating <= CAST(sqlc.narg(rating_max) AS INTEGER))
   AND (CAST(sqlc.narg(uploader) AS TEXT) IS NULL OR i.uploader_nickname = CAST(sqlc.narg(uploader) AS TEXT))
-  AND (CAST(sqlc.narg(from_time) AS TEXT) IS NULL OR datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))) >= CAST(sqlc.narg(from_time) AS TEXT))
-  AND (CAST(sqlc.narg(to_time) AS TEXT) IS NULL OR datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))) <= CAST(sqlc.narg(to_time) AS TEXT))
+  AND (CAST(sqlc.narg(device) AS TEXT) IS NULL OR i.device_key = CAST(sqlc.narg(device) AS TEXT))
+  AND (CAST(sqlc.narg(from_time) AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) >= CAST(sqlc.narg(from_time) AS TEXT))
+  AND (CAST(sqlc.narg(to_time) AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) <= CAST(sqlc.narg(to_time) AS TEXT))
   AND (CAST(sqlc.narg(has_gps) AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
   AND (CAST(sqlc.narg(tags) AS TEXT) IS NULL OR (
         SELECT COUNT(DISTINCT t.id) FROM image_tags it JOIN tags t ON t.id = it.tag_id
@@ -65,8 +69,9 @@ WHERE i.folder_id = sqlc.arg(folder_id)
   AND (CAST(sqlc.narg(rating_min) AS INTEGER) IS NULL OR i.rating >= CAST(sqlc.narg(rating_min) AS INTEGER))
   AND (CAST(sqlc.narg(rating_max) AS INTEGER) IS NULL OR i.rating <= CAST(sqlc.narg(rating_max) AS INTEGER))
   AND (CAST(sqlc.narg(uploader) AS TEXT) IS NULL OR i.uploader_nickname = CAST(sqlc.narg(uploader) AS TEXT))
-  AND (CAST(sqlc.narg(from_time) AS TEXT) IS NULL OR datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))) >= CAST(sqlc.narg(from_time) AS TEXT))
-  AND (CAST(sqlc.narg(to_time) AS TEXT) IS NULL OR datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))) <= CAST(sqlc.narg(to_time) AS TEXT))
+  AND (CAST(sqlc.narg(device) AS TEXT) IS NULL OR i.device_key = CAST(sqlc.narg(device) AS TEXT))
+  AND (CAST(sqlc.narg(from_time) AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) >= CAST(sqlc.narg(from_time) AS TEXT))
+  AND (CAST(sqlc.narg(to_time) AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) <= CAST(sqlc.narg(to_time) AS TEXT))
   AND (CAST(sqlc.narg(has_gps) AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
   AND (CAST(sqlc.narg(tags) AS TEXT) IS NULL OR (
         SELECT COUNT(DISTINCT t.id) FROM image_tags it JOIN tags t ON t.id = it.tag_id

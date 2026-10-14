@@ -25,6 +25,12 @@
       {{range .Uploaders}}<option value="{{.}}"{{if eq $.F.Uploader .}} selected{{end}}>{{.}}</option>{{end}}
     </select>
   </label>
+  <label>{{t "filter.device"}}
+    <select name="device">
+      <option value="">{{t "filter.any_device"}}</option>
+      {{range .Devices}}<option value="{{.Key}}"{{if eq $.F.Device .Key}} selected{{end}}>{{.Label}}</option>{{end}}
+    </select>
+  </label>
   <label>{{t "filter.from"}} <input type="date" name="from" value="{{.F.From}}"></label>
   <label>{{t "filter.to"}} <input type="date" name="to" value="{{.F.To}}"></label>
   <label class="check"><input type="checkbox" name="has_gps" value="1"{{if .F.HasGPS}} checked{{end}}> {{t "filter.with_location"}}</label>

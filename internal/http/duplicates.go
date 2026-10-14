@@ -25,6 +25,7 @@ type DuplicatePair struct {
 type DuplicatesView struct {
 	FolderID string
 	Pending  []DuplicatePair
+	Open     bool // expanded; set after the user acted on a pair
 }
 
 func (s *Server) duplicatesView(ctx context.Context, folderID string) (DuplicatesView, error) {
@@ -65,6 +66,7 @@ func (s *Server) duplicatesResponse(w http.ResponseWriter, r *http.Request, fold
 		s.serverError(w, r, err)
 		return
 	}
+	v.Open = true
 	s.fragment(w, r, "duplicates_panel", v)
 }
 

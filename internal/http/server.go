@@ -163,6 +163,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /images/{id}/preview", s.auth(s.imageFile("preview")))
 	mux.Handle("GET /images/{id}/original", s.auth(s.imageFile("original")))
 	mux.Handle("POST /images/{id}/rating", s.auth(s.imageRate))
+	mux.Handle("POST /images/{id}/time", s.auth(s.imageTime))
 	mux.Handle("POST /images/{id}/trash", s.auth(s.imageTrash))
 	mux.Handle("POST /images/{id}/tags", s.auth(s.imageTagAdd))
 	mux.Handle("POST /images/{id}/tags/{tag}/delete", s.auth(s.imageTagRemove))

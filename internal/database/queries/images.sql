@@ -159,3 +159,6 @@ ORDER BY seq DESC LIMIT 1;
 SELECT id FROM images
 WHERE folder_id = ? AND deleted_at IS NULL AND seq > ?
 ORDER BY seq ASC LIMIT 1;
+
+-- name: SetImageManualTime :execrows
+UPDATE images SET manual_time = ? WHERE id = ?;

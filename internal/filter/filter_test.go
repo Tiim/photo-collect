@@ -47,9 +47,9 @@ func TestParseForestAndRating(t *testing.T) {
 }
 
 func TestParseFull(t *testing.T) {
-	f := parse(t, "tag=Summer&tag=forrest, Summer&tag_mode=any&rating_min=2&rating_max=4&uploader=+anna++b+&from=2026-06-01&to=2026-06-02&has_gps=1&sort=captured&dir=asc")
+	f := parse(t, "tag=Summer&tag=forrest, Summer&tag_mode=any&rating_min=2&rating_max=4&uploader=+anna++b+&device=anna%7CCanon%7CR5&from=2026-06-01&to=2026-06-02&has_gps=1&sort=captured&dir=asc")
 	want := filter.Filter{
-		Tags: []string{"forrest", "summer"}, TagMode: filter.ModeAny, RatingMin: 2, RatingMax: 4, Uploader: "anna b",
+		Tags: []string{"forrest", "summer"}, TagMode: filter.ModeAny, RatingMin: 2, RatingMax: 4, Uploader: "anna b", Device: "anna|Canon|R5",
 		From: "2026-06-01", To: "2026-06-02", HasGPS: true, Sort: filter.SortCaptured, Dir: filter.DirAsc,
 	}
 	if !reflect.DeepEqual(f, want) {
@@ -113,5 +113,15 @@ func TestCursor(t *testing.T) {
 	p := f.ListParams("f", c, 10)
 	if !p.AfterSeq.Valid || p.AfterSeq.Int64 != 42 || p.AfterKey.String != "003" {
 		t.Fatalf("params = %+v", p)
+	}
+}
+
+func TestDefaultSortIsCaptured(t *testing.T) {
+	if f := parse(t, ""); f.Sort != filter.SortCaptured || f.Dir != filter.DirDesc || f.Active() || f.Query() != "" {
+		t.Fatalf("default = %+v (%q)", f, f.Query())
+	}
+	f := parse(t, "sort=uploaded")
+	if f.Sort != filter.SortUploaded || f.Query() != "sort=uploaded" {
+		t.Fatalf("uploaded = %+v (%q)", f, f.Query())
 	}
 }

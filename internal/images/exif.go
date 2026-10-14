@@ -92,3 +92,14 @@ func (m Meta) DeviceKey(nickname string) string {
 	}
 	return strings.Join(parts, "|")
 }
+
+// EffectiveTime is the time an image was taken: the manually set time if any,
+// else the EXIF time with the calibration offset. ok is false if neither exists.
+func EffectiveTime(manual, exifTime sql.NullString, offsetSeconds sql.NullInt64) (t time.Time, ok bool) {
+	if manual.Valid {
+		if t, err := time.ParseInLocation(WallTimeLayout, manual.String, time.UTC); err == nil {
+			return t, true
+		}
+	}
+	return CorrectedTime(exifTime, offsetSeconds)
+}

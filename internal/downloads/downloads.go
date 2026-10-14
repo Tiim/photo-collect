@@ -98,8 +98,8 @@ func (s *Service) Prepare(ctx context.Context, folderID string, imageIDs []strin
 			rating = int(im.Rating.Int64)
 		}
 		x := XMPData{Rating: rating, Tags: tags[im.ID], Uploader: im.UploaderNickname}
-		if im.TimeOffsetSeconds.Valid {
-			x.Captured, _ = images.CorrectedTime(im.ExifTime, im.TimeOffsetSeconds)
+		if im.ManualTime.Valid || im.TimeOffsetSeconds.Valid {
+			x.Captured, _ = images.EffectiveTime(im.ManualTime, im.ExifTime, im.TimeOffsetSeconds)
 		}
 		if im.GpsLat.Valid && im.GpsLon.Valid {
 			x.HasGPS, x.Lat, x.Lon = true, im.GpsLat.Float64, im.GpsLon.Float64

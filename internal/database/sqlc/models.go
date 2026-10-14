@@ -51,6 +51,7 @@ type Image struct {
 	GpsLon            sql.NullFloat64
 	GpsAttemptedAt    sql.NullString
 	ExportName        sql.NullString
+	ManualTime        sql.NullString
 }
 
 type ImageDuplicate struct {

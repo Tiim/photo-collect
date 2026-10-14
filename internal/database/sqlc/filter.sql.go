@@ -17,13 +17,14 @@ WHERE i.folder_id = ?1
   AND (CAST(?2 AS INTEGER) IS NULL OR i.rating >= CAST(?2 AS INTEGER))
   AND (CAST(?3 AS INTEGER) IS NULL OR i.rating <= CAST(?3 AS INTEGER))
   AND (CAST(?4 AS TEXT) IS NULL OR i.uploader_nickname = CAST(?4 AS TEXT))
-  AND (CAST(?5 AS TEXT) IS NULL OR datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))) >= CAST(?5 AS TEXT))
-  AND (CAST(?6 AS TEXT) IS NULL OR datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))) <= CAST(?6 AS TEXT))
-  AND (CAST(?7 AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
-  AND (CAST(?8 AS TEXT) IS NULL OR (
+  AND (CAST(?5 AS TEXT) IS NULL OR i.device_key = CAST(?5 AS TEXT))
+  AND (CAST(?6 AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) >= CAST(?6 AS TEXT))
+  AND (CAST(?7 AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) <= CAST(?7 AS TEXT))
+  AND (CAST(?8 AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
+  AND (CAST(?9 AS TEXT) IS NULL OR (
         SELECT COUNT(DISTINCT t.id) FROM image_tags it JOIN tags t ON t.id = it.tag_id
-        WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(?8 AS TEXT)))
-      ) >= ?9)
+        WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(?9 AS TEXT)))
+      ) >= ?10)
 `
 
 type CountImagesFilteredParams struct {
@@ -31,6 +32,7 @@ type CountImagesFilteredParams struct {
 	RatingMin  sql.NullInt64
 	RatingMax  sql.NullInt64
 	Uploader   sql.NullString
+	Device     sql.NullString
 	FromTime   sql.NullString
 	ToTime     sql.NullString
 	HasGps     sql.NullInt64
@@ -44,6 +46,7 @@ func (q *Queries) CountImagesFiltered(ctx context.Context, arg CountImagesFilter
 		arg.RatingMin,
 		arg.RatingMax,
 		arg.Uploader,
+		arg.Device,
 		arg.FromTime,
 		arg.ToTime,
 		arg.HasGps,
@@ -62,15 +65,16 @@ WHERE i.folder_id = ?1
   AND (CAST(?2 AS INTEGER) IS NULL OR i.rating >= CAST(?2 AS INTEGER))
   AND (CAST(?3 AS INTEGER) IS NULL OR i.rating <= CAST(?3 AS INTEGER))
   AND (CAST(?4 AS TEXT) IS NULL OR i.uploader_nickname = CAST(?4 AS TEXT))
-  AND (CAST(?5 AS TEXT) IS NULL OR datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))) >= CAST(?5 AS TEXT))
-  AND (CAST(?6 AS TEXT) IS NULL OR datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))) <= CAST(?6 AS TEXT))
-  AND (CAST(?7 AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
-  AND (CAST(?8 AS TEXT) IS NULL OR (
+  AND (CAST(?5 AS TEXT) IS NULL OR i.device_key = CAST(?5 AS TEXT))
+  AND (CAST(?6 AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) >= CAST(?6 AS TEXT))
+  AND (CAST(?7 AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) <= CAST(?7 AS TEXT))
+  AND (CAST(?8 AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
+  AND (CAST(?9 AS TEXT) IS NULL OR (
         SELECT COUNT(DISTINCT t.id) FROM image_tags it JOIN tags t ON t.id = it.tag_id
-        WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(?8 AS TEXT)))
-      ) >= ?9)
+        WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(?9 AS TEXT)))
+      ) >= ?10)
 ORDER BY i.seq
-LIMIT ?10
+LIMIT ?11
 `
 
 type ListFilteredRefsParams struct {
@@ -78,6 +82,7 @@ type ListFilteredRefsParams struct {
 	RatingMin  sql.NullInt64
 	RatingMax  sql.NullInt64
 	Uploader   sql.NullString
+	Device     sql.NullString
 	FromTime   sql.NullString
 	ToTime     sql.NullString
 	HasGps     sql.NullInt64
@@ -99,6 +104,7 @@ func (q *Queries) ListFilteredRefs(ctx context.Context, arg ListFilteredRefsPara
 		arg.RatingMin,
 		arg.RatingMax,
 		arg.Uploader,
+		arg.Device,
 		arg.FromTime,
 		arg.ToTime,
 		arg.HasGps,
@@ -158,9 +164,9 @@ func (q *Queries) ListFolderUploaders(ctx context.Context, folderID string) ([]s
 
 const listImagesFiltered = `-- name: ListImagesFiltered :many
 
-SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at, export_name, sort_key, is_desc FROM (
-  SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds, i.phash, i.phash_attempted_at, i.derivative_version, i.deleted_at, i.deleted_by, i.gps_lat, i.gps_lon, i.gps_attempted_at, i.export_name, CASE CAST(?1 AS TEXT)
-      WHEN 'captured' THEN COALESCE(datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))), '')
+SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, height, sha256, uploader_nickname, rating, thumbnail_ready, preview_ready, created_at, device_key, exif_time, qr_scanned, is_calibration, calib_ref_time, time_offset_seconds, phash, phash_attempted_at, derivative_version, deleted_at, deleted_by, gps_lat, gps_lon, gps_attempted_at, export_name, manual_time, sort_key, is_desc FROM (
+  SELECT i.seq, i.id, i.folder_id, i.original_filename, i.mime_type, i.size_bytes, i.width, i.height, i.sha256, i.uploader_nickname, i.rating, i.thumbnail_ready, i.preview_ready, i.created_at, i.device_key, i.exif_time, i.qr_scanned, i.is_calibration, i.calib_ref_time, i.time_offset_seconds, i.phash, i.phash_attempted_at, i.derivative_version, i.deleted_at, i.deleted_by, i.gps_lat, i.gps_lon, i.gps_attempted_at, i.export_name, i.manual_time, CASE CAST(?1 AS TEXT)
+      WHEN 'captured' THEN COALESCE(COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))), CASE WHEN CAST(?2 AS TEXT) = 'desc' THEN '' ELSE '9999-99-99 99:99:99' END)
       WHEN 'rating' THEN printf('%03d', COALESCE(i.rating, 0))
       ELSE printf('%020d', i.seq) END AS sort_key,
          CAST(?2 AS TEXT) = 'desc' AS is_desc
@@ -170,22 +176,23 @@ SELECT seq, id, folder_id, original_filename, mime_type, size_bytes, width, heig
   AND (CAST(?4 AS INTEGER) IS NULL OR i.rating >= CAST(?4 AS INTEGER))
   AND (CAST(?5 AS INTEGER) IS NULL OR i.rating <= CAST(?5 AS INTEGER))
   AND (CAST(?6 AS TEXT) IS NULL OR i.uploader_nickname = CAST(?6 AS TEXT))
-  AND (CAST(?7 AS TEXT) IS NULL OR datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))) >= CAST(?7 AS TEXT))
-  AND (CAST(?8 AS TEXT) IS NULL OR datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0))) <= CAST(?8 AS TEXT))
-  AND (CAST(?9 AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
-  AND (CAST(?10 AS TEXT) IS NULL OR (
+  AND (CAST(?7 AS TEXT) IS NULL OR i.device_key = CAST(?7 AS TEXT))
+  AND (CAST(?8 AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) >= CAST(?8 AS TEXT))
+  AND (CAST(?9 AS TEXT) IS NULL OR COALESCE(datetime(i.manual_time), datetime(i.exif_time, printf('%+d seconds', COALESCE(i.time_offset_seconds, 0)))) <= CAST(?9 AS TEXT))
+  AND (CAST(?10 AS INTEGER) IS NULL OR i.gps_lat IS NOT NULL)
+  AND (CAST(?11 AS TEXT) IS NULL OR (
         SELECT COUNT(DISTINCT t.id) FROM image_tags it JOIN tags t ON t.id = it.tag_id
-        WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(?10 AS TEXT)))
-      ) >= ?11)
+        WHERE it.image_id = i.id AND t.name IN (SELECT value FROM json_each(CAST(?11 AS TEXT)))
+      ) >= ?12)
 ) AS f
-WHERE CAST(?12 AS INTEGER) IS NULL
-   OR (NOT f.is_desc AND (f.sort_key, f.seq) > (CAST(?13 AS TEXT), CAST(?12 AS INTEGER)))
-   OR (f.is_desc AND (f.sort_key, f.seq) < (CAST(?13 AS TEXT), CAST(?12 AS INTEGER)))
+WHERE CAST(?13 AS INTEGER) IS NULL
+   OR (NOT f.is_desc AND (f.sort_key, f.seq) > (CAST(?14 AS TEXT), CAST(?13 AS INTEGER)))
+   OR (f.is_desc AND (f.sort_key, f.seq) < (CAST(?14 AS TEXT), CAST(?13 AS INTEGER)))
 ORDER BY CASE WHEN NOT f.is_desc THEN f.sort_key END ASC,
          CASE WHEN f.is_desc THEN f.sort_key END DESC,
          CASE WHEN NOT f.is_desc THEN f.seq END ASC,
          CASE WHEN f.is_desc THEN f.seq END DESC
-LIMIT ?14
+LIMIT ?15
 `
 
 type ListImagesFilteredParams struct {
@@ -195,6 +202,7 @@ type ListImagesFilteredParams struct {
 	RatingMin  sql.NullInt64
 	RatingMax  sql.NullInt64
 	Uploader   sql.NullString
+	Device     sql.NullString
 	FromTime   sql.NullString
 	ToTime     sql.NullString
 	HasGps     sql.NullInt64
@@ -235,6 +243,7 @@ type ListImagesFilteredRow struct {
 	GpsLon            sql.NullFloat64
 	GpsAttemptedAt    sql.NullString
 	ExportName        sql.NullString
+	ManualTime        sql.NullString
 	SortKey           interface{}
 	IsDesc            bool
 }
@@ -244,9 +253,11 @@ type ListImagesFilteredRow struct {
 //
 //	tags         JSON array of tag names; an image needs `tags_needed` of them
 //	             (all of them for "all", 1 for "any").
+//	device       device_key (uploader + camera) to match exactly.
 //	from_time / to_time
-//	             bounds on the corrected capture time, "YYYY-MM-DD HH:MM:SS".
+//	             bounds on the effective capture time (manual time, else corrected EXIF time), "YYYY-MM-DD HH:MM:SS".
 //	sort         'uploaded' | 'captured' | 'rating'; dir 'asc' | 'desc'.
+//	             Images without a capture time sort last in both directions.
 //	after_key / after_seq
 //	             keyset cursor: the sort_key and seq of the last row of the
 //	             previous page (both NULL for the first page).
@@ -260,6 +271,7 @@ func (q *Queries) ListImagesFiltered(ctx context.Context, arg ListImagesFiltered
 		arg.RatingMin,
 		arg.RatingMax,
 		arg.Uploader,
+		arg.Device,
 		arg.FromTime,
 		arg.ToTime,
 		arg.HasGps,
@@ -306,6 +318,7 @@ func (q *Queries) ListImagesFiltered(ctx context.Context, arg ListImagesFiltered
 			&i.GpsLon,
 			&i.GpsAttemptedAt,
 			&i.ExportName,
+			&i.ManualTime,
 			&i.SortKey,
 			&i.IsDesc,
 		); err != nil {

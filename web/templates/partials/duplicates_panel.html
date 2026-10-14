@@ -1,7 +1,8 @@
 {{define "duplicates_panel"}}
 {{if .Pending}}
 <section class="panel duplicates" id="duplicates-{{.FolderID}}">
-  <h2>{{t "dup.title"}} <span class="muted small">({{len .Pending}})</span></h2>
+<details{{if .Open}} open{{end}}>
+  <summary><h2>{{t "dup.title"}} <span class="muted small">({{len .Pending}})</span></h2></summary>
   {{$folderID := .FolderID}}
   {{range .Pending}}
   <div class="dup-pair" id="dup-{{.ID}}">
@@ -27,6 +28,7 @@
     </div>
   </div>
   {{end}}
+</details>
 </section>
 {{end}}
 {{end}}

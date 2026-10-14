@@ -1,7 +1,7 @@
 // Package filter parses the gallery filter from a query string, encodes it
 // back for links and paging, and maps it onto the sqlc filter queries.
 //
-//	?tag=forrest&tag=summer&tag_mode=all&rating_min=3&uploader=anna&from=2026-06-01&to=2026-06-02&sort=captured
+//	?tag=forrest&tag=summer&tag_mode=all&rating_min=3&uploader=anna&device=...&from=2026-06-01&to=2026-06-02&sort=captured
 package filter
 
 import (
@@ -49,18 +49,19 @@ type Filter struct {
 	RatingMin int      // 1-5, 0 = unset
 	RatingMax int      // 1-5, 0 = unset
 	Uploader  string
+	Device    string // device_key (uploader + camera)
 	From, To  string // YYYY-MM-DD on the corrected capture time, "" = unset
 	HasGPS    bool
 	Sort      string
 	Dir       string
 }
 
-// Default returns the unfiltered view: newest upload first.
-func Default() Filter { return Filter{TagMode: ModeAll, Sort: SortUploaded, Dir: DirDesc} }
+// Default returns the unfiltered view: latest capture time first.
+func Default() Filter { return Filter{TagMode: ModeAll, Sort: SortCaptured, Dir: DirDesc} }
 
 // Active reports whether any filter (not just the sort order) is set.
 func (f Filter) Active() bool {
-	return len(f.Tags) > 0 || f.RatingMin > 0 || f.RatingMax > 0 || f.Uploader != "" ||
+	return len(f.Tags) > 0 || f.RatingMin > 0 || f.RatingMax > 0 || f.Uploader != "" || f.Device != "" ||
 		f.From != "" || f.To != "" || f.HasGPS
 }
 
@@ -112,6 +113,11 @@ func Parse(v url.Values) (Filter, error) {
 	f.Uploader = strings.Join(strings.Fields(v.Get("uploader")), " ")
 	if len([]rune(f.Uploader)) > 100 {
 		return f, bad("filter.uploader_long", "Uploader name is too long")
+	}
+
+	f.Device = strings.TrimSpace(v.Get("device"))
+	if len([]rune(f.Device)) > 300 {
+		return f, bad("filter.device_long", "Device name is too long")
 	}
 
 	if f.From, err = date(v, "from"); err != nil {
@@ -191,6 +197,9 @@ func (f Filter) Encode() url.Values {
 	if f.Uploader != "" {
 		v.Set("uploader", f.Uploader)
 	}
+	if f.Device != "" {
+		v.Set("device", f.Device)
+	}
 	if f.From != "" {
 		v.Set("from", f.From)
 	}
@@ -200,7 +209,7 @@ func (f Filter) Encode() url.Values {
 	if f.HasGPS {
 		v.Set("has_gps", "1")
 	}
-	if f.Sort != SortUploaded {
+	if f.Sort != SortCaptured {
 		v.Set("sort", f.Sort)
 	}
 	if f.Dir != DirDesc {
@@ -258,7 +267,7 @@ func (f Filter) ListParams(folderID string, after *Cursor, pageSize int64) sqlc.
 	from, to := f.bounds()
 	p := sqlc.ListImagesFilteredParams{
 		Sort: f.Sort, Dir: f.Dir, FolderID: folderID, PageSize: pageSize,
-		RatingMin: nullInt(f.RatingMin), RatingMax: nullInt(f.RatingMax), Uploader: nullStr(f.Uploader),
+		RatingMin: nullInt(f.RatingMin), RatingMax: nullInt(f.RatingMax), Uploader: nullStr(f.Uploader), Device: nullStr(f.Device),
 		FromTime: from, ToTime: to, HasGps: f.hasGPS(), Tags: tags, TagsNeeded: need,
 	}
 	if after != nil {
@@ -272,7 +281,7 @@ func (f Filter) ListParams(folderID string, after *Cursor, pageSize int64) sqlc.
 func (f Filter) CountParams(folderID string) sqlc.CountImagesFilteredParams {
 	p := f.ListParams(folderID, nil, 0)
 	return sqlc.CountImagesFilteredParams{
-		FolderID: p.FolderID, RatingMin: p.RatingMin, RatingMax: p.RatingMax, Uploader: p.Uploader,
+		FolderID: p.FolderID, RatingMin: p.RatingMin, RatingMax: p.RatingMax, Uploader: p.Uploader, Device: p.Device,
 		FromTime: p.FromTime, ToTime: p.ToTime, HasGps: p.HasGps, Tags: p.Tags, TagsNeeded: p.TagsNeeded,
 	}
 }
@@ -281,7 +290,7 @@ func (f Filter) CountParams(folderID string) sqlc.CountImagesFilteredParams {
 func (f Filter) RefsParams(folderID string, maxRows int64) sqlc.ListFilteredRefsParams {
 	p := f.ListParams(folderID, nil, 0)
 	return sqlc.ListFilteredRefsParams{
-		FolderID: p.FolderID, RatingMin: p.RatingMin, RatingMax: p.RatingMax, Uploader: p.Uploader,
+		FolderID: p.FolderID, RatingMin: p.RatingMin, RatingMax: p.RatingMax, Uploader: p.Uploader, Device: p.Device,
 		FromTime: p.FromTime, ToTime: p.ToTime, HasGps: p.HasGps, Tags: p.Tags, TagsNeeded: p.TagsNeeded,
 		MaxRows: maxRows,
 	}

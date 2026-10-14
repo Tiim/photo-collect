@@ -240,10 +240,83 @@ func TestFilterSortsByCorrectedTime(t *testing.T) {
 	e := setup(t)
 	seedFolder(t, e, gallerySeeds)
 	got := pageIDs(t, e, "sort=captured&dir=asc")
-	// f has no capture time and sorts first; e (23:10 + 1 h) comes after b (23:30 the day before).
-	want := []string{"f", "a", "b", "e", "c", "d"}
+	// e (23:10 + 1 h) comes after b (23:30 the day before); f has no capture time and sorts last.
+	want := []string{"a", "b", "e", "c", "d", "f"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+	// ... in both directions, and capture time is the default order.
+	for _, q := range []string{"sort=captured&dir=desc", ""} {
+		got = pageIDs(t, e, q)
+		want = []string{"d", "c", "e", "b", "a", "f"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("%q: got %v, want %v", q, got, want)
+		}
+	}
+}
+
+// A manually set time overrides the EXIF time and the clock correction, in
+// sorting and in the date filter, and can be cleared again.
+func TestManualTime(t *testing.T) {
+	e := setup(t)
+	seedFolder(t, e, gallerySeeds)
+
+	for _, c := range []struct {
+		id, time string
+		code     int
+	}{
+		{"f", "2026-06-03T08:00", 200}, // no capture time so far
+		{"a", "not a time", 400},
+		{"a", "1960-01-01T00:00", 400},
+	} {
+		rec := e.authed("POST", "/images/"+c.id+"/time", url.Values{"time": {c.time}})
+		if rec.Code != c.code {
+			t.Fatalf("%s %q: status %d", c.id, c.time, rec.Code)
+		}
+	}
+	if got := pageIDs(t, e, "sort=captured&dir=asc"); !reflect.DeepEqual(got, []string{"a", "b", "e", "c", "d", "f"}) {
+		t.Fatalf("f should now be the latest: %v", got)
+	}
+	if got := matching(t, e, "from=2026-06-03&to=2026-06-03"); !reflect.DeepEqual(got, []string{"f"}) {
+		t.Fatalf("date filter: %v", got)
+	}
+
+	// Overriding a corrected image wins over its offset.
+	e.authed("POST", "/images/e/time", url.Values{"time": {"2026-05-01T12:00:30"}})
+	if got := pageIDs(t, e, "sort=captured&dir=asc"); got[0] != "e" {
+		t.Fatalf("e should now be the earliest: %v", got)
+	}
+	body := e.authed("GET", "/images/e", nil).Body.String()
+	if !strings.Contains(body, "2026-05-01 12:00:30") || !strings.Contains(body, "set manually") {
+		t.Errorf("detail does not show the manual time:\n%s", body)
+	}
+
+	// An empty value clears the override.
+	e.authed("POST", "/images/e/time", url.Values{"time": {""}})
+	if got := pageIDs(t, e, "sort=captured&dir=asc"); got[0] != "a" {
+		t.Fatalf("after clearing: %v", got)
+	}
+	if rec := e.authed("POST", "/images/nope/time", url.Values{"time": {"2026-06-03T08:00"}}); rec.Code != 404 {
+		t.Errorf("unknown image: %d", rec.Code)
+	}
+}
+
+func TestDeviceFilter(t *testing.T) {
+	e := setup(t)
+	seedFolder(t, e, gallerySeeds)
+	e.db.Exec("UPDATE images SET device_key = 'anna|Canon|R5' WHERE id IN ('a', 'b')")
+	e.db.Exec("UPDATE images SET device_key = 'ben|Sony|A7' WHERE id = 'c'")
+
+	got := matching(t, e, "device="+url.QueryEscape("anna|Canon|R5"))
+	slices.Sort(got)
+	if !reflect.DeepEqual(got, []string{"a", "b"}) {
+		t.Fatalf("device filter: %v", got)
+	}
+	body := e.authed("GET", "/folders/g1", nil).Body.String()
+	for _, want := range []string{"Canon R5 · Anna", "Sony A7 · Ben"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("filter bar lacks %q", want)
+		}
 	}
 }
 

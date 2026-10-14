@@ -10,9 +10,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/tiim/photo-collect/internal/database/sqlc"
 	"github.com/tiim/photo-collect/internal/domain"
+	"github.com/tiim/photo-collect/internal/images"
 	"github.com/tiim/photo-collect/internal/storage"
 )
 
@@ -62,6 +64,12 @@ func (s *Server) imageShow(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	s.imageDetailResponse(w, r, img)
+}
+
+// imageDetailResponse renders the detail view of img: the full page, or just
+// the fragment for htmx requests.
+func (s *Server) imageDetailResponse(w http.ResponseWriter, r *http.Request, img sqlc.Image) {
 	folder, err := s.db.Q.GetFolder(r.Context(), img.FolderID)
 	if err != nil {
 		s.notFoundOr(w, r, err)
@@ -222,6 +230,45 @@ func (s *Server) imageRate(w http.ResponseWriter, r *http.Request) {
 	}
 	img.Rating = rating
 	s.fragment(w, r, "rating_response", tile(img))
+}
+
+// imageTime sets (or, with an empty value, clears) the capture time by hand.
+func (s *Server) imageTime(w http.ResponseWriter, r *http.Request) {
+	img, ok := s.image(w, r)
+	if !ok {
+		return
+	}
+	manual := sql.NullString{}
+	if v := strings.TrimSpace(r.PostFormValue("time")); v != "" {
+		t, err := parseManualTime(v)
+		if err != nil {
+			s.fail(w, r, http.StatusBadRequest, "err.bad_time")
+			return
+		}
+		manual = sql.NullString{String: t.Format(images.WallTimeLayout), Valid: true}
+	}
+	if _, err := s.db.Q.SetImageManualTime(r.Context(), sqlc.SetImageManualTimeParams{ManualTime: manual, ID: img.ID}); err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	img.ManualTime = manual
+	s.imageDetailResponse(w, r, img)
+}
+
+// parseManualTime reads a datetime-local value, with or without seconds.
+func parseManualTime(v string) (time.Time, error) {
+	var last error
+	for _, layout := range []string{images.WallTimeLayout, "2006-01-02T15:04"} {
+		t, err := time.ParseInLocation(layout, v, time.UTC)
+		if err == nil {
+			if t.Year() <= 1970 || t.After(time.Now().UTC().AddDate(1, 0, 0)) {
+				return t, errors.New("time out of range")
+			}
+			return t, nil
+		}
+		last = err
+	}
+	return time.Time{}, last
 }
 
 func (s *Server) tagsResponse(w http.ResponseWriter, r *http.Request, imageID string) {

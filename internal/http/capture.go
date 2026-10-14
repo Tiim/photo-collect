@@ -15,13 +15,26 @@ const captureLayout = "2006-01-02 15:04:05"
 // Capture-time helpers for templates. The corrected time is the camera's EXIF
 // time plus the offset learnt from a photo of the clock page.
 
-func (t TileView) HasCaptureTime() bool { return t.ExifTime.Valid }
+func (t TileView) HasCaptureTime() bool { return t.ExifTime.Valid || t.ManualTime.Valid }
 
-func (t TileView) Corrected() bool { return t.TimeOffsetSeconds.Valid }
+// ManualTimeSet reports whether the time was set by hand, which overrides the correction.
+func (t TileView) ManualTimeSet() bool { return t.ManualTime.Valid }
 
-// CapturedAt is the corrected capture time (the camera's own if uncorrected).
+func (t TileView) Corrected() bool { return !t.ManualTime.Valid && t.TimeOffsetSeconds.Valid }
+
+// ManualTimeInput is the manual time as the value of a datetime-local input,
+// or the current capture time as a starting point when none is set.
+func (t TileView) ManualTimeInput() string {
+	c, ok := images.EffectiveTime(t.ManualTime, t.ExifTime, t.TimeOffsetSeconds)
+	if !ok {
+		return ""
+	}
+	return c.Format(images.WallTimeLayout)
+}
+
+// CapturedAt is the capture time: set by hand, else corrected (the camera's own if uncorrected).
 func (t TileView) CapturedAt() string {
-	c, ok := images.CorrectedTime(t.ExifTime, t.TimeOffsetSeconds)
+	c, ok := images.EffectiveTime(t.ManualTime, t.ExifTime, t.TimeOffsetSeconds)
 	if !ok {
 		return ""
 	}
@@ -45,6 +58,18 @@ func (t TileView) OffsetText() string {
 	return formatOffset(t.TimeOffsetSeconds.Int64)
 }
 
+// DeviceOption is one entry of the device filter.
+type DeviceOption struct{ Key, Label string }
+
+// cameraName is "Make Model" of a device key ("nickname|make|model[|serial]").
+func cameraName(deviceKey string) string {
+	parts := strings.Split(deviceKey, "|")
+	if len(parts) >= 3 {
+		return strings.TrimSpace(parts[1] + " " + parts[2])
+	}
+	return deviceKey
+}
+
 // DeviceRow summarises one camera of one uploader within a folder.
 type DeviceRow struct {
 	Uploader, Camera string
@@ -60,13 +85,7 @@ func (s *Server) devicesView(ctx context.Context, loc *i18n.Localizer, folderID 
 	}
 	out := make([]DeviceRow, 0, len(rows))
 	for _, r := range rows {
-		// Device keys are "nickname|make|model[|serial]".
-		parts := strings.Split(r.DeviceKey.String, "|")
-		camera := r.DeviceKey.String
-		if len(parts) >= 3 {
-			camera = strings.TrimSpace(parts[1] + " " + parts[2])
-		}
-		d := DeviceRow{Uploader: r.UploaderNickname, Camera: camera, Images: r.ImageCount, Calibrated: r.CorrectedCount > 0}
+		d := DeviceRow{Uploader: r.UploaderNickname, Camera: cameraName(r.DeviceKey.String), Images: r.ImageCount, Calibrated: r.CorrectedCount > 0}
 		switch {
 		case r.CalibrationCount == 0:
 			d.Status = loc.T("device.no_clock_photo")

@@ -27,6 +27,7 @@ type FilterView struct {
 	F         filter.Filter
 	Query     string // "?..." of the applied filter, "" when unfiltered
 	Uploaders []string
+	Devices   []DeviceOption
 }
 
 // GalleryView is the swappable part of the folder page: toolbar and grid.
@@ -73,7 +74,7 @@ func imageOf(r sqlc.ListImagesFilteredRow) sqlc.Image {
 		CalibRefTime: r.CalibRefTime, TimeOffsetSeconds: r.TimeOffsetSeconds, Phash: r.Phash,
 		PhashAttemptedAt: r.PhashAttemptedAt, DerivativeVersion: r.DerivativeVersion, DeletedAt: r.DeletedAt,
 		DeletedBy: r.DeletedBy, GpsLat: r.GpsLat, GpsLon: r.GpsLon, GpsAttemptedAt: r.GpsAttemptedAt,
-		ExportName: r.ExportName,
+		ExportName: r.ExportName, ManualTime: r.ManualTime,
 	}
 }
 
@@ -98,7 +99,18 @@ func (s *Server) gridView(ctx context.Context, folderID string, f filter.Filter,
 
 func (s *Server) filterView(ctx context.Context, folderID string, f filter.Filter) (FilterView, error) {
 	ups, err := s.db.Q.ListFolderUploaders(ctx, folderID)
-	return FilterView{FolderID: folderID, F: f, Query: query(f.Encode()), Uploaders: ups}, err
+	if err != nil {
+		return FilterView{}, err
+	}
+	devs, err := s.db.Q.ListFolderDevices(ctx, folderID)
+	if err != nil {
+		return FilterView{}, err
+	}
+	opts := make([]DeviceOption, len(devs))
+	for i, d := range devs {
+		opts[i] = DeviceOption{Key: d.DeviceKey.String, Label: cameraName(d.DeviceKey.String) + " · " + d.UploaderNickname}
+	}
+	return FilterView{FolderID: folderID, F: f, Query: query(f.Encode()), Uploaders: ups, Devices: opts}, nil
 }
 
 func (s *Server) galleryView(ctx context.Context, folder sqlc.Folder, f filter.Filter) (GalleryView, error) {
