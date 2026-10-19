@@ -332,14 +332,14 @@ func TestEndToEnd(t *testing.T) {
 	xmp := ""
 	for _, f := range z.File {
 		zn = append(zn, f.Name)
-		if f.Name == "Summer Cup/IMG_1.xmp" {
+		if f.Name == "Summer Cup/undated/IMG_1.xmp" {
 			rc, _ := f.Open()
 			b, _ := io.ReadAll(rc)
 			rc.Close()
 			xmp = string(b)
 		}
 	}
-	want := "Summer Cup/IMG_1.jpg,Summer Cup/IMG_1.xmp,Summer Cup/IMG_1_2.jpg,Summer Cup/IMG_1_2.xmp,Summer Cup/c.jpg,Summer Cup/c.xmp"
+	want := "Summer Cup/undated/IMG_1.jpg,Summer Cup/undated/IMG_1.xmp,Summer Cup/undated/IMG_1_2.jpg,Summer Cup/undated/IMG_1_2.xmp,Summer Cup/undated/c.jpg,Summer Cup/undated/c.xmp"
 	if strings.Join(zn, ",") != want {
 		t.Fatalf("zip entries:\n got %v\nwant %s", zn, want)
 	}

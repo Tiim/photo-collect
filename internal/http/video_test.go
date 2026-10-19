@@ -78,8 +78,8 @@ func TestVideoUploadGalleryAndExport(t *testing.T) {
 		t.Fatalf("original: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
 	entries := e.readZip("GET", folderPath+"/export.zip?all=1", nil)
-	if len(entries) != 1 || sha256.Sum256(entries["Wedding/IMG_0001.MOV"]) != want {
-		t.Fatalf("export holds %d entries, video identical: %v", len(entries), bytes.Equal(entries["Wedding/IMG_0001.MOV"], video))
+	if len(entries) != 1 || sha256.Sum256(entries["Wedding/undated/IMG_0001.MOV"]) != want {
+		t.Fatalf("export holds %d entries, video identical: %v", len(entries), bytes.Equal(entries["Wedding/undated/IMG_0001.MOV"], video))
 	}
 	if l := e.exportList(folderPath+"/export.json?all=1", nil); len(l.Files) != 1 || l.Files[0].XMPName != "" || l.Files[0].XMP != "" {
 		t.Fatalf("export list: %+v", l.Files)

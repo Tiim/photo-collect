@@ -257,10 +257,19 @@
       });
     }
 
+    // Each file goes into the subfolder of its capture date. The handles are
+    // shared between the workers, so each subfolder is opened once.
+    var subdirs = {};
+    function subdir(dir, name) {
+      if (!name) { return Promise.resolve(dir); }
+      if (!subdirs[name]) { subdirs[name] = dir.getDirectoryHandle(name, { create: true }); }
+      return subdirs[name];
+    }
+
     function worker(dir) {
       if (ctl.signal.aborted || st.next >= st.files.length) { return Promise.resolve(); }
       var f = st.files[st.next++];
-      return saveFile(dir, f).then(null, function () {
+      return subdir(dir, f.dir).then(function (d) { return saveFile(d, f); }).then(null, function () {
         if (!ctl.signal.aborted) { st.failed++; }
       }).then(function () {
         if (!ctl.signal.aborted) { st.done++; }

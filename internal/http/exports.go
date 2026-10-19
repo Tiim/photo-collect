@@ -87,6 +87,7 @@ func (s *Server) exportZip(w http.ResponseWriter, r *http.Request) {
 type exportFileJSON struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
+	Dir       string `json:"dir"` // capture date (YYYY-MM-DD) or "undated", below the export's dir
 	Size      int64  `json:"size"`
 	SHA256    string `json:"sha256"`
 	URL       string `json:"url"`
@@ -97,7 +98,7 @@ type exportFileJSON struct {
 
 // exportJSON lists the files of an export for "save to folder": the page
 // downloads each original from its URL and writes the sidecar itself. Names
-// are relative to dir and stable per image, so a later run can skip what a
+// are relative to the file's date directory (inside dir) and stable per image, so a later run can skip what a
 // folder already has.
 func (s *Server) exportJSON(w http.ResponseWriter, r *http.Request) {
 	exp, ok := s.prepareExport(w, r)
@@ -107,7 +108,7 @@ func (s *Server) exportJSON(w http.ResponseWriter, r *http.Request) {
 	files := make([]exportFileJSON, len(exp.Files))
 	for i, f := range exp.Files {
 		files[i] = exportFileJSON{
-			ID: f.ImageID, Name: f.Name, Size: f.Size, SHA256: f.SHA256,
+			ID: f.ImageID, Name: f.Name, Dir: f.DateDir, Size: f.Size, SHA256: f.SHA256,
 			URL: "/images/" + f.ImageID + "/original",
 		}
 		if f.XMP != nil {

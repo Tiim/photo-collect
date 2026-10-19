@@ -37,7 +37,7 @@ func New(db *database.DB, store storage.Store, log *slog.Logger) *Service {
 type Export struct {
 	FolderID   string
 	FolderName string
-	Dir        string // top-level directory in the ZIP and in "save to folder"
+	Dir        string // top-level directory in the ZIP and in "save to folder", with a subdirectory per capture date
 	Created    time.Time
 	Files      []File
 }
@@ -46,10 +46,31 @@ type Export struct {
 type File struct {
 	ImageID  string
 	Name     string // stable per image, see EnsureNames
+	DateDir  string // capture date (YYYY-MM-DD) or UndatedDir, subdirectory below Export.Dir
 	Size     int64
 	SHA256   string
 	Modified time.Time // upload time
 	XMP      []byte    // nil for videos
+}
+
+// UndatedDir holds the photos and videos without a known capture time.
+const UndatedDir = "undated"
+
+// DateDir is the subdirectory for a capture time: its date as YYYY-MM-DD.
+// Capture times are wall-clock times of the camera, so no time zone applies.
+func DateDir(captured time.Time, ok bool) string {
+	if !ok {
+		return UndatedDir
+	}
+	return captured.Format("2006-01-02")
+}
+
+// path is the entry name of name (the file or its sidecar) in the ZIP.
+func (e *Export) path(f File, name string) string {
+	if f.DateDir == "" {
+		return e.Dir + "/" + name
+	}
+	return e.Dir + "/" + f.DateDir + "/" + name
 }
 
 // XMPName is the name of the photo's sidecar: the photo's name with .xmp as
@@ -98,16 +119,17 @@ func (s *Service) Prepare(ctx context.Context, folderID string, imageIDs []strin
 			rating = int(im.Rating.Int64)
 		}
 		x := XMPData{Rating: rating, Tags: tags[im.ID], Uploader: im.UploaderNickname}
+		captured, hasTime := images.EffectiveTime(im.ManualTime, im.ExifTime, im.TimeOffsetSeconds)
 		if im.ManualTime.Valid || im.TimeOffsetSeconds.Valid {
-			x.Captured, _ = images.EffectiveTime(im.ManualTime, im.ExifTime, im.TimeOffsetSeconds)
+			x.Captured = captured // the sidecar only overrides the EXIF time when it was corrected
 		}
 		if im.GpsLat.Valid && im.GpsLon.Valid {
 			x.HasGPS, x.Lat, x.Lon = true, im.GpsLat.Float64, im.GpsLon.Float64
 		}
 		created, _ := database.ParseTime(im.CreatedAt)
 		f := File{
-			ImageID: im.ID, Name: im.ExportName.String, Size: im.SizeBytes, SHA256: im.Sha256,
-			Modified: created,
+			ImageID: im.ID, Name: im.ExportName.String, DateDir: DateDir(captured, hasTime),
+			Size: im.SizeBytes, SHA256: im.Sha256, Modified: created,
 		}
 		if !images.IsVideo(im.MimeType) {
 			f.XMP = BuildXMP(x)
@@ -202,7 +224,7 @@ func (e *Export) entries() []zipEntry {
 	out := make([]zipEntry, 0, 2*len(e.Files))
 	deflate := newDeflater()
 	for _, f := range e.Files {
-		out = append(out, zipEntry{name: e.Dir + "/" + f.Name, comp: f.Size, raw: f.Size})
+		out = append(out, zipEntry{name: e.path(f, f.Name), comp: f.Size, raw: f.Size})
 		if f.XMP == nil {
 			continue
 		}
@@ -210,7 +232,7 @@ func (e *Export) entries() []zipEntry {
 		fw, _ := deflate(&c)
 		fw.Write(f.XMP)
 		fw.Close()
-		out = append(out, zipEntry{name: e.Dir + "/" + f.XMPName(), comp: c.n, raw: int64(len(f.XMP))})
+		out = append(out, zipEntry{name: e.path(f, f.XMPName()), comp: c.n, raw: int64(len(f.XMP))})
 	}
 	return out
 }
@@ -278,7 +300,7 @@ func (s *Service) WriteZip(ctx context.Context, w io.Writer, e *Export) error {
 		if f.XMP == nil {
 			continue
 		}
-		xw, err := zw.CreateHeader(&zip.FileHeader{Name: e.Dir + "/" + f.XMPName(), Method: zip.Deflate, Modified: e.Created})
+		xw, err := zw.CreateHeader(&zip.FileHeader{Name: e.path(f, f.XMPName()), Method: zip.Deflate, Modified: e.Created})
 		if err != nil {
 			return err
 		}
@@ -295,7 +317,7 @@ func (s *Service) writeOriginal(ctx context.Context, zw *zip.Writer, e *Export, 
 		return fmt.Errorf("original of %s: %w", f.ImageID, err)
 	}
 	defer rc.Close()
-	w, err := zw.CreateHeader(&zip.FileHeader{Name: e.Dir + "/" + f.Name, Method: zip.Store, Modified: f.Modified})
+	w, err := zw.CreateHeader(&zip.FileHeader{Name: e.path(f, f.Name), Method: zip.Store, Modified: f.Modified})
 	if err != nil {
 		return err
 	}

@@ -89,6 +89,10 @@ func TestStreamedZipHasOriginalsAndSidecars(t *testing.T) {
 	if _, err := f.db.Q.SetImageRating(f.ctx, sqlc.SetImageRatingParams{Rating: sql.NullInt64{Int64: 4, Valid: true}, ID: b}); err != nil {
 		t.Fatal(err)
 	}
+	// a has no capture time, b one set by hand.
+	if _, err := f.db.Exec("UPDATE images SET manual_time = ? WHERE id = ?", "2025-07-14T23:30:00", b); err != nil {
+		t.Fatal(err)
+	}
 	exp, err := f.svc.Prepare(f.ctx, f.folder, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +108,10 @@ func TestStreamedZipHasOriginalsAndSidecars(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string][]byte{"party/a.jpg": f.data[a], "party/a_2.jpg": f.data[b], "party/a.xmp": nil, "party/a_2.xmp": nil}
+	want := map[string][]byte{
+		"party/undated/a.jpg": f.data[a], "party/undated/a.xmp": nil,
+		"party/2025-07-14/a_2.jpg": f.data[b], "party/2025-07-14/a_2.xmp": nil,
+	}
 	if len(zr.File) != len(want) {
 		t.Errorf("%d entries, want %d", len(zr.File), len(want))
 	}
@@ -128,7 +135,7 @@ func TestStreamedZipHasOriginalsAndSidecars(t *testing.T) {
 			if zf.Method != zip.Store || !bytes.Equal(got, content) {
 				t.Errorf("%s: method %d, original not byte-identical", zf.Name, zf.Method)
 			}
-		case zf.Name == "party/a_2.xmp":
+		case zf.Name == "party/2025-07-14/a_2.xmp":
 			if !bytes.Contains(got, []byte(`xmp:Rating="4"`)) || !bytes.Contains(got, []byte("anna")) {
 				t.Errorf("sidecar of the rated photo:\n%s", got)
 			}

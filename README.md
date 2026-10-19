@@ -166,6 +166,9 @@ Restrict who may sign in with an Authentik policy/group binding on the applicati
 - Exports: **Download selected / all / all matching** streams a ZIP straight into the response
   (originals stored uncompressed, sidecars deflated). Nothing is written on the server and the
   download starts at once, with its size known so the browser shows progress.
+  Files are sorted into one subfolder per capture date (`<folder>/YYYY-MM-DD/<file>`, the corrected
+  capture time; photos and videos without one go to `undated/`). Correcting a capture time can move
+  a photo to another date folder; "Save to folder" then saves it there and leaves the old copy.
   Chrome and Edge on desktop also show **Save to folder…**: the page writes the originals and
   sidecars into a folder you pick (in a subfolder named after the folder), a few at a time.
   Running it again into the same folder downloads only photos that are missing or incomplete and
