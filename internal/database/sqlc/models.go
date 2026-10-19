@@ -91,6 +91,21 @@ type Session struct {
 	ExpiresAt string
 }
 
+type Share struct {
+	ID        string
+	FolderID  string
+	Token     string
+	Name      string
+	ExpiresAt string
+	CreatedBy sql.NullString
+	CreatedAt string
+}
+
+type ShareImage struct {
+	ShareID string
+	ImageID string
+}
+
 type Tag struct {
 	ID   int64
 	Name string

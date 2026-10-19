@@ -39,6 +39,7 @@ type GalleryView struct {
 	Matching int64 // images matching the filter
 	Total    int64 // images in the folder
 	Map      MapCard
+	Shares   []sqlc.ListFolderSharesRow // for "add selected to share"
 }
 
 func query(v url.Values) string {
@@ -118,6 +119,9 @@ func (s *Server) galleryView(ctx context.Context, folder sqlc.Folder, f filter.F
 	g := GalleryView{FolderID: folderID, CSRF: sessionFrom(ctx).CSRFToken}
 	var err error
 	if g.Map, err = s.mapCard(ctx, folder, f); err != nil {
+		return g, err
+	}
+	if g.Shares, err = s.db.Q.ListFolderShares(ctx, folderID); err != nil {
 		return g, err
 	}
 	if g.Filter, err = s.filterView(ctx, folderID, f); err != nil {

@@ -19,6 +19,7 @@
 <section class="panels">
   {{template "map_card" .Gallery.Map}}
   <div class="panel"><h2>{{t "folder.upload_link"}}</h2>{{template "upload_link" .Link}}</div>
+  <div class="panel"><h2>{{t "folder.shares"}}</h2>{{template "shares_panel" .Shares}}</div>
   <div class="panel"><h2>{{t "folder.standard_tags"}}</h2>{{template "standard_tags" .Tags}}</div>
   {{if .Devices}}
   <div class="panel devices-card">

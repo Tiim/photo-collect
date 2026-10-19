@@ -1,0 +1,11 @@
+{{define "content"}}
+{{with .Data}}
+<div class="folder-head">
+  <h1>{{.Name}}</h1>
+  <span class="muted small">{{t "share.item_count" (dict "Count" .Count)}} · {{t "share.available_until" (dict "Date" (date .ExpiresAt))}}</span>
+  {{if .Count}}<div class="head-actions"><a class="button" href="/s/{{.Token}}/download.zip">{{t "share.download_all"}}</a></div>{{end}}
+</div>
+<div class="grid">{{template "share_grid" .Grid}}</div>
+{{if not .Grid.Images}}<p class="muted">{{t "share.empty_public"}}</p>{{end}}
+{{end}}
+{{end}}

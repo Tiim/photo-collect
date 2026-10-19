@@ -51,6 +51,8 @@ The container persists everything under `/data` (`photos.db`, `photos/`).
 | `RATE_AUTH_PER_IP` | `10` | Requests per minute per IP on `/auth/login` and `/auth/callback` |
 | `RATE_NICKNAME_PER_IP` | `5` | Nickname changes per minute per IP |
 | `UPLOAD_LINK_DURATION` | `168h` | Default validity of new upload links |
+| `SHARE_LINK_DURATION` | `168h` | Default validity of new share links (read-only galleries for people without an account) |
+| `RATE_SHARE_PER_IP` | `600` | Requests per minute per client IP on the public `/s/...` share routes (each thumbnail counts). `0` disables the limit |
 | `THUMBNAIL_SIZE` / `PREVIEW_SIZE` | `400` / `1600` | Longest edge in pixels |
 | `WORKER_COUNT` | `2` | Background job workers |
 
@@ -118,6 +120,12 @@ Restrict who may sign in with an Authentik policy/group binding on the applicati
   make and model) then get a corrected capture time, shown in the image details and written to the
   XMP sidecar on export. The originals are never touched. Accuracy is about one second; photos
   that lack EXIF make/model or capture time cannot be corrected.
+- Share links: select photos/videos in a folder and click "Share selected" to create a link
+  (`/s/<token>`) that anyone can open without signing in. It shows a read-only gallery with
+  previews, single downloads and a ZIP of all originals (without XMP sidecars, so ratings, tags
+  and nicknames stay private). A folder can have several share links; each one's files, title and
+  expiry can be changed later on its page, and deleting it stops the link immediately. Trashed
+  images drop out of every share.
 - Duplicate detection: an exact re-upload (same bytes) is skipped silently; a near-duplicate
   (same picture resized/re-encoded) is flagged for review in the folder, where an admin can keep
   one (the other goes to the trash) and merge tags/rating onto it, or dismiss the pair.

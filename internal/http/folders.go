@@ -55,6 +55,7 @@ type FolderPage struct {
 	Folder     sqlc.Folder
 	Tags       StdTagsView
 	Link       LinkView
+	Shares     SharesView
 	Gallery    GalleryView
 	Counts     FolderCounts
 	Devices    []DeviceRow
@@ -136,6 +137,7 @@ func (s *Server) folderShow(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
+	p.Shares = SharesView{FolderID: f.ID, Shares: p.Gallery.Shares}
 	allowMapTiles(w) // the folder map loads tiles
 	s.page(w, r, http.StatusOK, "folder", f.Name, p)
 }
@@ -170,6 +172,9 @@ func (s *Server) folderDelete(w http.ResponseWriter, r *http.Request) {
 		}
 		deleted = true
 		if err := q.DeleteUploadLink(r.Context(), id); err != nil {
+			return err
+		}
+		if err := q.DeleteFolderShares(r.Context(), id); err != nil {
 			return err
 		}
 		return s.queue.Enqueue(r.Context(), q, jobs.TypeDeleteFolder, jobs.DeleteFolderPayload{FolderID: id})

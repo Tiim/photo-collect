@@ -131,92 +131,101 @@ func (s *Server) imageFile(kind string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		var key, contentType string
-		var length int64 = -1
-		switch kind {
-		case "original":
-			key, contentType, length = storage.OriginalKey(img.FolderID, img.ID), img.MimeType, img.SizeBytes
-		case "preview":
-			if img.PreviewReady == 0 {
-				http.NotFound(w, r)
-				return
-			}
-			key, contentType = storage.PreviewKey(img.FolderID, img.ID), "image/jpeg"
-		case "thumbnail":
-			if img.ThumbnailReady == 0 {
-				http.NotFound(w, r)
-				return
-			}
-			key, contentType = storage.ThumbnailKey(img.FolderID, img.ID), "image/jpeg"
-		}
-		// Originals are immutable; derivatives can be regenerated, so their
-		// ETag carries the derivative version.
-		etag := fmt.Sprintf(`"%s-%s"`, img.Sha256[:16], kind)
-		if kind != "original" {
-			etag = fmt.Sprintf(`"%s-%s-%d"`, img.Sha256[:16], kind, img.DerivativeVersion)
-		}
-		w.Header().Set("ETag", etag)
-		w.Header().Set("Cache-Control", "private, max-age=3600")
-		if etagMatches(r.Header.Values("If-None-Match"), etag) {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
+		s.serveImage(w, r, img, kind, "private, max-age=3600")
+	}
+}
 
-		// Originals support single byte ranges so browsers can stream and seek videos.
-		status := http.StatusOK
-		var start, n int64
-		ranged := false
-		if kind == "original" {
-			w.Header().Set("Accept-Ranges", "bytes")
-			if rh := r.Header.Get("Range"); rh != "" && ifRangeOK(r.Header.Get("If-Range"), etag) {
-				st, en, res := parseRange(rh, length)
-				switch res {
-				case rangeUnsatisfiable:
-					w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", length))
-					w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
-					return
-				case rangeOK:
-					ranged, start, n, status = true, st, en-st+1, http.StatusPartialContent
-					w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", st, en, length))
-				}
-			}
-		}
-
-		var rc io.ReadCloser
-		var err error
-		if ranged {
-			rc, err = s.store.GetRange(r.Context(), key, start, n)
-		} else {
-			rc, err = s.store.Get(r.Context(), key)
-		}
-		if errors.Is(err, storage.ErrNotFound) {
+// serveImage streams one stored file of img: kind is "original", "preview"
+// or "thumbnail".
+func (s *Server) serveImage(w http.ResponseWriter, r *http.Request, img sqlc.Image, kind, cacheControl string) {
+	var key, contentType string
+	var length int64 = -1
+	switch kind {
+	case "original":
+		key, contentType, length = storage.OriginalKey(img.FolderID, img.ID), img.MimeType, img.SizeBytes
+	case "preview":
+		if img.PreviewReady == 0 {
 			http.NotFound(w, r)
 			return
 		}
-		if err != nil {
-			s.log.Error("storage read failed", "key", key, "err", err)
-			s.fail(w, r, http.StatusBadGateway, "err.storage")
+		key, contentType = storage.PreviewKey(img.FolderID, img.ID), "image/jpeg"
+	case "thumbnail":
+		if img.ThumbnailReady == 0 {
+			http.NotFound(w, r)
 			return
 		}
-		defer rc.Close()
-
-		w.Header().Set("Content-Type", contentType)
-		switch {
-		case ranged:
-			w.Header().Set("Content-Length", strconv.FormatInt(n, 10))
-		case length >= 0:
-			w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
-		}
-		if kind == "original" {
-			disp := "inline"
-			if r.URL.Query().Get("download") == "1" {
-				disp = "attachment"
-			}
-			w.Header().Set("Content-Disposition", mime.FormatMediaType(disp, map[string]string{"filename": asciiName(img.OriginalFilename)}))
-		}
-		w.WriteHeader(status)
-		_, _ = io.Copy(w, rc)
+		key, contentType = storage.ThumbnailKey(img.FolderID, img.ID), "image/jpeg"
+	default:
+		http.NotFound(w, r)
+		return
 	}
+	// Originals are immutable; derivatives can be regenerated, so their
+	// ETag carries the derivative version.
+	etag := fmt.Sprintf(`"%s-%s"`, img.Sha256[:16], kind)
+	if kind != "original" {
+		etag = fmt.Sprintf(`"%s-%s-%d"`, img.Sha256[:16], kind, img.DerivativeVersion)
+	}
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", cacheControl)
+	if etagMatches(r.Header.Values("If-None-Match"), etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	// Originals support single byte ranges so browsers can stream and seek videos.
+	status := http.StatusOK
+	var start, n int64
+	ranged := false
+	if kind == "original" {
+		w.Header().Set("Accept-Ranges", "bytes")
+		if rh := r.Header.Get("Range"); rh != "" && ifRangeOK(r.Header.Get("If-Range"), etag) {
+			st, en, res := parseRange(rh, length)
+			switch res {
+			case rangeUnsatisfiable:
+				w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", length))
+				w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+				return
+			case rangeOK:
+				ranged, start, n, status = true, st, en-st+1, http.StatusPartialContent
+				w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", st, en, length))
+			}
+		}
+	}
+
+	var rc io.ReadCloser
+	var err error
+	if ranged {
+		rc, err = s.store.GetRange(r.Context(), key, start, n)
+	} else {
+		rc, err = s.store.Get(r.Context(), key)
+	}
+	if errors.Is(err, storage.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		s.log.Error("storage read failed", "key", key, "err", err)
+		s.fail(w, r, http.StatusBadGateway, "err.storage")
+		return
+	}
+	defer rc.Close()
+
+	w.Header().Set("Content-Type", contentType)
+	switch {
+	case ranged:
+		w.Header().Set("Content-Length", strconv.FormatInt(n, 10))
+	case length >= 0:
+		w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
+	}
+	if kind == "original" {
+		disp := "inline"
+		if r.URL.Query().Get("download") == "1" {
+			disp = "attachment"
+		}
+		w.Header().Set("Content-Disposition", mime.FormatMediaType(disp, map[string]string{"filename": asciiName(img.OriginalFilename)}))
+	}
+	w.WriteHeader(status)
+	_, _ = io.Copy(w, rc)
 }
 
 type rangeResult int
