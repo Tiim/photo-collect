@@ -204,13 +204,16 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 }
 
 // routeLabel returns the matched route pattern. It deliberately never logs the
-// raw path, because upload links carry a secret token in the URL.
+// raw path, because upload and share links carry a secret token in the URL.
 func routeLabel(r *http.Request) string {
 	if r.Pattern != "" {
 		return r.Pattern
 	}
 	if strings.HasPrefix(r.URL.Path, "/upload/") {
 		return "/upload/[redacted]"
+	}
+	if strings.HasPrefix(r.URL.Path, "/s/") {
+		return "/s/[redacted]"
 	}
 	return r.URL.Path
 }

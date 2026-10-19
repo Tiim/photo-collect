@@ -52,9 +52,9 @@ type Server struct {
 	clientIPs *clientip.Resolver
 	warnProxy sync.Once
 
-	limUploadIP, limUploadLink, limAuthIP, limNicknameIP *ratelimit.Limiter
-	ingestSlots                                          chan struct{} // nil = unlimited
-	static                                               *staticAssets
+	limUploadIP, limUploadLink, limAuthIP, limNicknameIP, limShareIP *ratelimit.Limiter
+	ingestSlots                                                      chan struct{} // nil = unlimited
+	static                                                           *staticAssets
 }
 
 type Deps struct {
@@ -82,6 +82,7 @@ func NewServer(d Deps) (*Server, error) {
 		limUploadLink: ratelimit.New(d.Config.RateUploadPerLink),
 		limAuthIP:     ratelimit.New(d.Config.RateAuthPerIP),
 		limNicknameIP: ratelimit.New(d.Config.RateNicknamePerIP),
+		limShareIP:    ratelimit.New(d.Config.RateSharePerIP),
 	}
 	if n := d.Config.UploadMaxConcurrent; n > 0 {
 		s.ingestSlots = make(chan struct{}, n)
@@ -127,6 +128,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /upload/{token}/chunked/{id}", s.chunkedPut)
 	mux.Handle("POST /upload/{token}/chunked/{id}/complete", s.limited(http.HandlerFunc(s.chunkedComplete), uploadLimit...))
 
+	// Share links (capability = possession of the link token): read-only.
+	shareLimit := []limitRule{{"share-ip", s.limShareIP, s.ipKey}}
+	mux.Handle("GET /s/{token}", s.limited(http.HandlerFunc(s.publicShareShow), shareLimit...))
+	mux.Handle("GET /s/{token}/download.zip", s.limited(http.HandlerFunc(s.publicShareZip), shareLimit...))
+	mux.Handle("GET /s/{token}/i/{id}", s.limited(http.HandlerFunc(s.publicShareImageShow), shareLimit...))
+	mux.Handle("GET /s/{token}/i/{id}/{kind}", s.limited(http.HandlerFunc(s.publicShareFile), shareLimit...))
+
 	// Public clock page (photographed to calibrate camera clocks) and its time source.
 	mux.HandleFunc("GET /{$}", s.clockPage)
 	mux.HandleFunc("GET /time", s.serverTime)
@@ -146,6 +154,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /folders/{id}/delete", s.auth(s.folderDelete))
 	mux.Handle("POST /folders/{id}/standard-tags", s.auth(s.standardTagAdd))
 	mux.Handle("POST /folders/{id}/standard-tags/{tag}/delete", s.auth(s.standardTagRemove))
+	mux.Handle("POST /folders/{id}/shares", s.auth(s.shareAdd))
+	mux.Handle("GET /shares/{id}", s.auth(s.shareShow))
+	mux.Handle("POST /shares/{id}/rename", s.auth(s.shareRename))
+	mux.Handle("POST /shares/{id}/extend", s.auth(s.shareExtend))
+	mux.Handle("POST /shares/{id}/delete", s.auth(s.shareDelete))
+	mux.Handle("POST /shares/{id}/images/remove", s.auth(s.shareRemoveImages))
 	mux.Handle("POST /folders/{id}/upload-link", s.auth(s.uploadLinkCreate))
 	mux.Handle("POST /folders/{id}/upload-link/extend", s.auth(s.uploadLinkExtend))
 	mux.Handle("POST /folders/{id}/upload-link/revoke", s.auth(s.uploadLinkRevoke))

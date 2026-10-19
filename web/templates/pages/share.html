@@ -1,0 +1,51 @@
+{{define "content"}}
+{{with .Data}}
+<p><a href="/folders/{{.Folder.ID}}">← {{.Folder.Name}}</a></p>
+<div class="folder-head">
+  <h1>{{or .Share.Label .Share.Name}}</h1>
+  <span class="muted small">{{t "share.item_count" (dict "Count" .Count)}}</span>
+</div>
+
+<section class="panels">
+  <div class="panel">
+    <h2>{{t "share.link"}}</h2>
+    <div class="row"><input id="share-url" type="text" readonly value="{{.URL}}"><button type="button" class="secondary" data-copy="#share-url">{{t "link.copy"}}</button></div>
+    <p>{{if .Expired}}{{th "link.expired_on" (dict "Date" (date .Share.ExpiresAt))}}{{else}}{{t "link.expires" (dict "Date" (date .Share.ExpiresAt))}}{{end}}</p>
+    {{if not .Expired}}<p><a class="button" href="{{.URL}}" target="_blank" rel="noopener">{{t "share.open"}}</a></p>{{end}}
+    <div class="link-action">
+      <form hx-post="/shares/{{.Share.ID}}/extend" class="row">
+        <label>{{t "link.valid_for"}} <input type="number" name="days" value="{{.DefaultDays}}" min="1" max="365" class="days"> {{t "link.days_from_now"}}</label>
+        <button type="submit">{{t "link.extend"}}</button>
+      </form>
+      <p class="muted small">{{t "share.extend_hint"}}</p>
+    </div>
+    <div class="link-action">
+      <button type="button" class="danger" hx-post="/shares/{{.Share.ID}}/delete"
+              hx-confirm="{{t "share.delete_confirm"}}">{{t "share.delete"}}</button>
+      <p class="muted small">{{t "share.delete_hint"}}</p>
+    </div>
+  </div>
+  <div class="panel">
+    <h2>{{t "share.names"}}</h2>
+    <form hx-post="/shares/{{.Share.ID}}/rename" class="share-names">
+      <label>{{t "share.label"}}
+        <input type="text" name="label" value="{{.Share.Label}}" maxlength="100" placeholder="{{t "gallery.share_label_placeholder"}}">
+        <span class="muted small">{{t "share.label_hint"}}</span></label>
+      <label>{{t "share.title"}}
+        <input type="text" name="name" value="{{.Share.Name}}" maxlength="100" required>
+        <span class="muted small">{{t "share.title_hint"}}</span></label>
+      <button type="submit">{{t "folder.rename_save"}}</button>
+    </form>
+  </div>
+</section>
+
+<form id="select-form" method="post" action="/shares/{{.Share.ID}}/images/remove" class="row toolbar">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <button type="submit" class="danger" data-need-selection>{{t "share.remove_selected"}}</button>
+  <button type="button" data-select-all class="secondary">{{t "select_all_loaded"}}</button>
+  <a class="button secondary" href="/folders/{{.Folder.ID}}">{{t "share.add_more"}}</a>
+</form>
+<div id="grid" class="grid">{{template "share_grid" .Grid}}</div>
+{{if not .Grid.Images}}<p class="muted">{{t "share.empty"}}</p>{{end}}
+{{end}}
+{{end}}

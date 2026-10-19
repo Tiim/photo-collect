@@ -59,11 +59,15 @@ type Config struct {
 	// UploadMaxPending caps chunked uploads that are started but not finished.
 	UploadMaxPending int
 
+	// ShareLinkDuration is the default validity of new share links.
+	ShareLinkDuration time.Duration
+
 	// Requests per minute; 0 disables the limit.
 	RateUploadPerIP   int
 	RateUploadPerLink int
 	RateAuthPerIP     int
 	RateNicknamePerIP int
+	RateSharePerIP    int
 
 	ThumbnailSize int
 	PreviewSize   int
@@ -110,11 +114,13 @@ func Load() (*Config, error) {
 		UploadLinkDuration:       e.duration("UPLOAD_LINK_DURATION", 7*24*time.Hour),
 		UploadChunkSize:          e.int64("UPLOAD_CHUNK_SIZE", 512<<10),
 		UploadMaxPending:         int(e.int64("UPLOAD_MAX_PENDING", 64)),
+		ShareLinkDuration:        e.duration("SHARE_LINK_DURATION", 7*24*time.Hour),
 
 		RateUploadPerIP:   int(e.int64("RATE_UPLOAD_PER_IP", 100)),
 		RateUploadPerLink: int(e.int64("RATE_UPLOAD_PER_LINK", 300)),
 		RateAuthPerIP:     int(e.int64("RATE_AUTH_PER_IP", 10)),
 		RateNicknamePerIP: int(e.int64("RATE_NICKNAME_PER_IP", 5)),
+		RateSharePerIP:    int(e.int64("RATE_SHARE_PER_IP", 600)),
 
 		ThumbnailSize: int(e.int64("THUMBNAIL_SIZE", 400)),
 		PreviewSize:   int(e.int64("PREVIEW_SIZE", 1600)),
@@ -172,6 +178,7 @@ func (c *Config) validate() error {
 	for name, v := range map[string]int{
 		"RATE_UPLOAD_PER_IP": c.RateUploadPerIP, "RATE_UPLOAD_PER_LINK": c.RateUploadPerLink,
 		"RATE_AUTH_PER_IP": c.RateAuthPerIP, "RATE_NICKNAME_PER_IP": c.RateNicknamePerIP,
+		"RATE_SHARE_PER_IP": c.RateSharePerIP,
 	} {
 		if v < 0 {
 			errs = append(errs, fmt.Errorf("%s must be >= 0 (0 disables the limit)", name))

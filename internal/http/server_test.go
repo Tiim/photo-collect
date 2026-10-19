@@ -66,7 +66,7 @@ func setupWith(t *testing.T, mutate func(*config.Config), log *slog.Logger) *env
 	cfg := &config.Config{
 		BaseURL: "http://example.test", SessionSecret: strings.Repeat("s", 32), SessionTTL: time.Hour,
 		UploadMaxFileSize: 1 << 20, UploadMaxVideoSize: 2 << 20, UploadMaxImagesPerFolder: 3, UploadMaxPixels: 60_000_000,
-		UploadLinkDuration: 24 * time.Hour, ThumbnailSize: 40, PreviewSize: 80,
+		UploadLinkDuration: 24 * time.Hour, ShareLinkDuration: 24 * time.Hour, ThumbnailSize: 40, PreviewSize: 80,
 	}
 	if mutate != nil {
 		mutate(cfg)

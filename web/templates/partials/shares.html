@@ -1,0 +1,24 @@
+{{define "shares_panel"}}
+{{if .Shares}}
+<ul class="share-list">
+  {{range .Shares}}
+  <li><a href="/shares/{{.ID}}">{{or .Label .Name}}</a>{{if .Label}} <span class="small">“{{.Name}}”</span>{{end}}
+    <span class="muted small">{{t "share.item_count" (dict "Count" .ImageCount)}} · {{if $.Expired .ExpiresAt}}<span class="error">{{t "share.expired"}}</span>{{else}}{{t "link.expires" (dict "Date" (date .ExpiresAt))}}{{end}}</span></li>
+  {{end}}
+</ul>
+{{else}}
+<p class="muted">{{t "share.none"}}</p>
+{{end}}
+<p class="muted small">{{t "share.panel_hint"}}</p>
+{{end}}
+
+{{/* Tiles of a share: the folder's own tiles in the management view, links into the share on the public page. */}}
+{{define "share_grid"}}{{range .Images}}{{if $.Token}}{{template "share_tile" (dict "T" $.Token "I" .)}}{{else}}{{template "image_tile" .}}{{end}}{{end}}{{if .NextURL}}<div class="sentinel" hx-get="{{.NextURL}}" hx-trigger="revealed" hx-target="this" hx-swap="outerHTML"></div>{{end}}{{end}}
+
+{{define "share_tile"}}<div class="tile">
+  <a class="thumb" href="/s/{{.T}}/i/{{.I.ID}}">
+    {{if .I.ThumbnailReady}}<img src="/s/{{.T}}/i/{{.I.ID}}/thumbnail" loading="lazy" alt="{{.I.OriginalFilename}}">{{else if .I.IsVideo}}{{template "video_placeholder"}}{{else}}<div class="placeholder">{{t "tile.processing"}}</div>{{end}}
+  </a>
+  <div class="caption"><span class="name" title="{{.I.OriginalFilename}}">{{.I.OriginalFilename}}</span>
+    <a class="small" href="/s/{{.T}}/i/{{.I.ID}}/original?download=1">{{t "share.download"}}</a></div>
+</div>{{end}}
