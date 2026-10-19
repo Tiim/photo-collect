@@ -228,3 +228,33 @@ func TestShareExpiryAndDelete(t *testing.T) {
 		t.Errorf("share of deleted folder: %d", got)
 	}
 }
+
+func TestShareLabelIsPrivate(t *testing.T) {
+	te := newFolderWithImages(setup(t), "Party", [2]int{60, 40}, [2]int{50, 50})
+	rec := te.authed("POST", te.folderPath+"/shares", url.Values{"image": {te.ids[0]}, "label": {"  Grandma  "}})
+	sid := strings.TrimPrefix(rec.Header().Get("HX-Redirect"), "/shares/")
+	te.share("", te.ids[1]) // a second share without a name
+	tok := te.shareToken(sid)
+
+	if n := te.scalar("SELECT COUNT(*) FROM shares WHERE label = 'Grandma'"); n != 1 {
+		t.Fatalf("label not stored")
+	}
+	folder := te.authed("GET", te.folderPath, nil).Body.String()
+	if !strings.Contains(folder, ">Grandma</a>") || !strings.Contains(folder, "Add to “Grandma”") {
+		t.Error("folder page does not show the share's name")
+	}
+	if !strings.Contains(te.authed("GET", "/shares/"+sid, nil).Body.String(), "<h1>Grandma</h1>") {
+		t.Error("share page does not show the name")
+	}
+	if pub := body(te.anon("/s/" + tok)); strings.Contains(pub, "Grandma") || !strings.Contains(pub, "<h1>Party</h1>") {
+		t.Error("public page shows the private name or lacks the title")
+	}
+
+	te.authed("POST", "/shares/"+sid+"/rename", url.Values{"name": {"Photos for you"}, "label": {"Grandpa"}})
+	if n := te.scalar("SELECT COUNT(*) FROM shares WHERE label = 'Grandpa' AND name = 'Photos for you'"); n != 1 {
+		t.Error("rename did not update name and title")
+	}
+	if rec := te.authed("POST", "/shares/"+sid+"/rename", url.Values{"name": {"x"}, "label": {strings.Repeat("a", 101)}}); rec.Code != 400 {
+		t.Errorf("long name: %d", rec.Code)
+	}
+}

@@ -121,6 +121,13 @@
     if (window.confirm(q.replace('{n}', n))) { e.detail.issueRequest(true); }
   });
 
+  // "Share selected": the name field is only for a new share link.
+  document.addEventListener('change', function (e) {
+    var pick = e.target.closest && e.target.closest('[data-share-pick]');
+    var label = pick && pick.parentNode.querySelector('[data-share-label]');
+    if (label) { label.hidden = pick.value !== ''; }
+  });
+
   // ---- export ----
   // "Download selected" posts the form natively (the ZIP is streamed back), so
   // an empty selection is caught here rather than answered with an error page.

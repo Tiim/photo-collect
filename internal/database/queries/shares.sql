@@ -1,6 +1,6 @@
 -- name: CreateShare :one
-INSERT INTO shares (id, folder_id, token, name, expires_at, created_by)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO shares (id, folder_id, token, name, label, expires_at, created_by)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetShare :one
@@ -15,7 +15,7 @@ WHERE s.token = ? AND f.deleted_at IS NULL;
 
 -- Shares of a folder with the number of (not trashed) images in each.
 -- name: ListFolderShares :many
-SELECT s.id, s.name, s.expires_at,
+SELECT s.id, s.name, s.label, s.expires_at,
        (SELECT COUNT(*) FROM share_images si JOIN images i ON i.id = si.image_id
         WHERE si.share_id = s.id AND i.deleted_at IS NULL) AS image_count
 FROM shares s
@@ -23,7 +23,7 @@ WHERE s.folder_id = ?
 ORDER BY s.created_at DESC, s.id;
 
 -- name: RenameShare :execrows
-UPDATE shares SET name = ? WHERE id = ?;
+UPDATE shares SET name = ?, label = ? WHERE id = ?;
 
 -- name: ExtendShare :execrows
 UPDATE shares SET expires_at = ? WHERE id = ?;

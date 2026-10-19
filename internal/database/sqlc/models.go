@@ -99,6 +99,7 @@ type Share struct {
 	ExpiresAt string
 	CreatedBy sql.NullString
 	CreatedAt string
+	Label     string
 }
 
 type ShareImage struct {

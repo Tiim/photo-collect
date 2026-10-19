@@ -2,7 +2,7 @@
 {{if .Shares}}
 <ul class="share-list">
   {{range .Shares}}
-  <li><a href="/shares/{{.ID}}">{{.Name}}</a>
+  <li><a href="/shares/{{.ID}}">{{or .Label .Name}}</a>{{if .Label}} <span class="small">“{{.Name}}”</span>{{end}}
     <span class="muted small">{{t "share.item_count" (dict "Count" .ImageCount)}} · {{if $.Expired .ExpiresAt}}<span class="error">{{t "share.expired"}}</span>{{else}}{{t "link.expires" (dict "Date" (date .ExpiresAt))}}{{end}}</span></li>
   {{end}}
 </ul>

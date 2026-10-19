@@ -2,7 +2,7 @@
 {{with .Data}}
 <p><a href="/folders/{{.Folder.ID}}">← {{.Folder.Name}}</a></p>
 <div class="folder-head">
-  <h1>{{.Share.Name}}</h1>
+  <h1>{{or .Share.Label .Share.Name}}</h1>
   <span class="muted small">{{t "share.item_count" (dict "Count" .Count)}}</span>
 </div>
 
@@ -26,12 +26,16 @@
     </div>
   </div>
   <div class="panel">
-    <h2>{{t "share.title"}}</h2>
-    <form hx-post="/shares/{{.Share.ID}}/rename" class="row">
-      <input type="text" name="name" value="{{.Share.Name}}" maxlength="100" required aria-label="{{t "share.title"}}">
+    <h2>{{t "share.names"}}</h2>
+    <form hx-post="/shares/{{.Share.ID}}/rename" class="share-names">
+      <label>{{t "share.label"}}
+        <input type="text" name="label" value="{{.Share.Label}}" maxlength="100" placeholder="{{t "gallery.share_label_placeholder"}}">
+        <span class="muted small">{{t "share.label_hint"}}</span></label>
+      <label>{{t "share.title"}}
+        <input type="text" name="name" value="{{.Share.Name}}" maxlength="100" required>
+        <span class="muted small">{{t "share.title_hint"}}</span></label>
       <button type="submit">{{t "folder.rename_save"}}</button>
     </form>
-    <p class="muted small">{{t "share.title_hint"}}</p>
   </div>
 </section>
 

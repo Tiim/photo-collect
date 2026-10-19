@@ -123,8 +123,9 @@ Restrict who may sign in with an Authentik policy/group binding on the applicati
 - Share links: select photos/videos in a folder and click "Share selected" to create a link
   (`/s/<token>`) that anyone can open without signing in. It shows a read-only gallery with
   previews, single downloads and a ZIP of all originals (without XMP sidecars, so ratings, tags
-  and nicknames stay private). A folder can have several share links; each one's files, title and
-  expiry can be changed later on its page, and deleting it stops the link immediately. Trashed
+  and nicknames stay private). A folder can have several share links, each with an optional private name
+  (e.g. the recipient) to tell them apart; files, name, public title and expiry can be changed
+  later on its page, and deleting it stops the link immediately. Trashed
   images drop out of every share.
 - Duplicate detection: an exact re-upload (same bytes) is skipped silently; a near-duplicate
   (same picture resized/re-encoded) is flagged for review in the folder, where an admin can keep

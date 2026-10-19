@@ -68,10 +68,11 @@
   <button type="button" class="secondary" data-save-folder="/folders/{{.FolderID}}/export.json?all=1" title="{{t "gallery.save_folder_hint"}}">{{t "gallery.save_all"}}</button>
   <button type="button" data-select-all class="secondary">{{t "select_all_loaded"}}</button>
   <span class="share-pick">
-    <select name="share" aria-label="{{t "gallery.share_target"}}">
+    <select name="share" aria-label="{{t "gallery.share_target"}}" data-share-pick>
       <option value="">{{t "gallery.share_new"}}</option>
-      {{range .Shares}}<option value="{{.ID}}">{{t "gallery.share_existing" (dict "Name" .Name)}}</option>{{end}}
+      {{range .Shares}}<option value="{{.ID}}">{{t "gallery.share_existing" (dict "Name" (or .Label .Name))}}</option>{{end}}
     </select>
+    <input type="text" name="label" maxlength="100" placeholder="{{t "gallery.share_label_placeholder"}}" aria-label="{{t "share.label"}}" data-share-label>
     <button type="submit" class="secondary" formaction="/folders/{{.FolderID}}/shares" data-need-selection>{{t "gallery.share_selected"}}</button>
   </span>
   <button type="button" class="danger" hx-post="/folders/{{.FolderID}}/images/trash{{.Filter.Query}}" hx-target="#gallery" hx-swap="innerHTML"

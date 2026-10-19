@@ -1,6 +1,7 @@
 package http
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -104,11 +105,16 @@ func (s *Server) shareAdd(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID := sessionFrom(ctx).UserID
 	shareID := r.PostFormValue("share")
+	label, ok := cleanShareText(r.PostFormValue("label"))
+	if !ok {
+		s.fail(w, r, http.StatusBadRequest, "err.share_label")
+		return
+	}
 	var added int64
 	err := s.db.InTx(ctx, func(q *sqlc.Queries) error {
 		if shareID == "" {
 			sh, err := q.CreateShare(ctx, sqlc.CreateShareParams{
-				ID: domain.NewID(), FolderID: f.ID, Token: domain.NewToken(), Name: f.Name,
+				ID: domain.NewID(), FolderID: f.ID, Token: domain.NewToken(), Name: f.Name, Label: label,
 				ExpiresAt: database.Time(time.Now().Add(s.cfg.ShareLinkDuration)),
 				CreatedBy: sql.NullString{String: userID, Valid: true},
 			})
@@ -162,23 +168,36 @@ func (s *Server) shareShow(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
-	s.page(w, r, http.StatusOK, "share", sh.Name, SharePage{
+	s.page(w, r, http.StatusOK, "share", cmp.Or(sh.Label, sh.Name), SharePage{
 		Share: sh, Folder: f, URL: s.publicURL("s", sh.Token), Expired: sh.ExpiresAt <= database.Time(time.Now()),
 		Count: n, DefaultDays: s.shareDefaultDays(), CSRF: sessionFrom(ctx).CSRFToken, Grid: g,
 	})
 }
 
+// cleanShareText collapses whitespace in a title or name; ok is false if it is
+// longer than 100 characters.
+func cleanShareText(v string) (string, bool) {
+	v = strings.Join(strings.Fields(v), " ")
+	return v, len([]rune(v)) <= 100
+}
+
+// shareRename sets the public title and the private name.
 func (s *Server) shareRename(w http.ResponseWriter, r *http.Request) {
 	sh, ok := s.share(w, r)
 	if !ok {
 		return
 	}
-	name := strings.Join(strings.Fields(r.PostFormValue("name")), " ")
-	if name == "" || len([]rune(name)) > 100 {
+	name, ok := cleanShareText(r.PostFormValue("name"))
+	if !ok || name == "" {
 		s.fail(w, r, http.StatusBadRequest, "err.share_name")
 		return
 	}
-	if _, err := s.db.Q.RenameShare(r.Context(), sqlc.RenameShareParams{Name: name, ID: sh.ID}); err != nil {
+	label, ok := cleanShareText(r.PostFormValue("label"))
+	if !ok {
+		s.fail(w, r, http.StatusBadRequest, "err.share_label")
+		return
+	}
+	if _, err := s.db.Q.RenameShare(r.Context(), sqlc.RenameShareParams{Name: name, Label: label, ID: sh.ID}); err != nil {
 		s.serverError(w, r, err)
 		return
 	}

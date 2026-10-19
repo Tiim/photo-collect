@@ -58,9 +58,9 @@ func (q *Queries) CountShareImages(ctx context.Context, shareID string) (int64, 
 }
 
 const createShare = `-- name: CreateShare :one
-INSERT INTO shares (id, folder_id, token, name, expires_at, created_by)
-VALUES (?, ?, ?, ?, ?, ?)
-RETURNING id, folder_id, token, name, expires_at, created_by, created_at
+INSERT INTO shares (id, folder_id, token, name, label, expires_at, created_by)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id, folder_id, token, name, expires_at, created_by, created_at, label
 `
 
 type CreateShareParams struct {
@@ -68,6 +68,7 @@ type CreateShareParams struct {
 	FolderID  string
 	Token     string
 	Name      string
+	Label     string
 	ExpiresAt string
 	CreatedBy sql.NullString
 }
@@ -78,6 +79,7 @@ func (q *Queries) CreateShare(ctx context.Context, arg CreateShareParams) (Share
 		arg.FolderID,
 		arg.Token,
 		arg.Name,
+		arg.Label,
 		arg.ExpiresAt,
 		arg.CreatedBy,
 	)
@@ -90,6 +92,7 @@ func (q *Queries) CreateShare(ctx context.Context, arg CreateShareParams) (Share
 		&i.ExpiresAt,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.Label,
 	)
 	return i, err
 }
@@ -130,7 +133,7 @@ func (q *Queries) ExtendShare(ctx context.Context, arg ExtendShareParams) (int64
 }
 
 const getShare = `-- name: GetShare :one
-SELECT s.id, s.folder_id, s.token, s.name, s.expires_at, s.created_by, s.created_at FROM shares s
+SELECT s.id, s.folder_id, s.token, s.name, s.expires_at, s.created_by, s.created_at, s.label FROM shares s
 JOIN folders f ON f.id = s.folder_id
 WHERE s.id = ? AND f.deleted_at IS NULL
 `
@@ -146,12 +149,13 @@ func (q *Queries) GetShare(ctx context.Context, id string) (Share, error) {
 		&i.ExpiresAt,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.Label,
 	)
 	return i, err
 }
 
 const getShareByToken = `-- name: GetShareByToken :one
-SELECT s.id, s.folder_id, s.token, s.name, s.expires_at, s.created_by, s.created_at FROM shares s
+SELECT s.id, s.folder_id, s.token, s.name, s.expires_at, s.created_by, s.created_at, s.label FROM shares s
 JOIN folders f ON f.id = s.folder_id
 WHERE s.token = ? AND f.deleted_at IS NULL
 `
@@ -167,6 +171,7 @@ func (q *Queries) GetShareByToken(ctx context.Context, token string) (Share, err
 		&i.ExpiresAt,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.Label,
 	)
 	return i, err
 }
@@ -221,7 +226,7 @@ func (q *Queries) GetShareImage(ctx context.Context, arg GetShareImageParams) (I
 }
 
 const listFolderShares = `-- name: ListFolderShares :many
-SELECT s.id, s.name, s.expires_at,
+SELECT s.id, s.name, s.label, s.expires_at,
        (SELECT COUNT(*) FROM share_images si JOIN images i ON i.id = si.image_id
         WHERE si.share_id = s.id AND i.deleted_at IS NULL) AS image_count
 FROM shares s
@@ -232,6 +237,7 @@ ORDER BY s.created_at DESC, s.id
 type ListFolderSharesRow struct {
 	ID         string
 	Name       string
+	Label      string
 	ExpiresAt  string
 	ImageCount int64
 }
@@ -249,6 +255,7 @@ func (q *Queries) ListFolderShares(ctx context.Context, folderID string) ([]List
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.Label,
 			&i.ExpiresAt,
 			&i.ImageCount,
 		); err != nil {
@@ -431,16 +438,17 @@ func (q *Queries) RemoveShareImages(ctx context.Context, arg RemoveShareImagesPa
 }
 
 const renameShare = `-- name: RenameShare :execrows
-UPDATE shares SET name = ? WHERE id = ?
+UPDATE shares SET name = ?, label = ? WHERE id = ?
 `
 
 type RenameShareParams struct {
-	Name string
-	ID   string
+	Name  string
+	Label string
+	ID    string
 }
 
 func (q *Queries) RenameShare(ctx context.Context, arg RenameShareParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, renameShare, arg.Name, arg.ID)
+	result, err := q.db.ExecContext(ctx, renameShare, arg.Name, arg.Label, arg.ID)
 	if err != nil {
 		return 0, err
 	}
