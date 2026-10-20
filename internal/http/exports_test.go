@@ -14,10 +14,10 @@ import (
 type exportList struct {
 	Dir   string
 	Files []struct {
-		ID, Name, SHA256, URL string
-		Size                  int64
-		XMPName               string `json:"xmp_name"`
-		XMP                   string
+		ID, Name, Dir, SHA256, URL string
+		Size                       int64
+		XMPName                    string `json:"xmp_name"`
+		XMP                        string
 	}
 }
 
@@ -84,6 +84,9 @@ func TestExportStreamsZipAndListsFiles(t *testing.T) {
 	if list.Dir != "Summer Party" || len(list.Files) != 2 {
 		t.Fatalf("list: %+v", list)
 	}
+	if list.Files[0].Dir != "undated" || list.Files[1].Dir != "undated" {
+		t.Errorf("date folders of photos without capture time: %+v", list.Files)
+	}
 	if list.Files[0].Name != "a.jpg" || list.Files[1].Name != "A_2.JPG" || list.Files[1].XMPName != "A_2.xmp" {
 		t.Errorf("names: %+v", list.Files)
 	}
@@ -102,18 +105,18 @@ func TestExportStreamsZipAndListsFiles(t *testing.T) {
 		t.Errorf("%d entries: %v", len(entries), entries)
 	}
 	for i, f := range list.Files {
-		if !bytes.Equal(entries["Summer Party/"+f.Name], photos[i]) {
+		if !bytes.Equal(entries["Summer Party/"+f.Dir+"/"+f.Name], photos[i]) {
 			t.Errorf("%s: original in ZIP not byte-identical", f.Name)
 		}
-		if string(entries["Summer Party/"+f.XMPName]) != f.XMP || !strings.Contains(f.XMP, "Bob") {
-			t.Errorf("%s: sidecar in ZIP differs from the list:\n%s", f.Name, entries["Summer Party/"+f.XMPName])
+		if string(entries["Summer Party/"+f.Dir+"/"+f.XMPName]) != f.XMP || !strings.Contains(f.XMP, "Bob") {
+			t.Errorf("%s: sidecar in ZIP differs from the list:\n%s", f.Name, entries["Summer Party/"+f.Dir+"/"+f.XMPName])
 		}
 	}
 
 	// A selection is posted (with the CSRF token) and keeps the names.
 	sel := url.Values{"image": {list.Files[1].ID}}
 	entries = e.readZip("POST", folderPath+"/export.zip", sel)
-	if len(entries) != 2 || !bytes.Equal(entries["Summer Party/A_2.JPG"], photos[1]) {
+	if len(entries) != 2 || !bytes.Equal(entries["Summer Party/undated/A_2.JPG"], photos[1]) {
 		t.Errorf("selection: %v", entries)
 	}
 	if l := e.exportList(folderPath+"/export.json", sel); len(l.Files) != 1 || l.Files[0].Name != "A_2.JPG" {

@@ -410,8 +410,12 @@ Downloads are streamed: the ZIP (originals stored uncompressed, XMP sidecars def
 while it is sent, with `Content-Length` computed up front. Nothing is stored on the server, so
 there is no build step, no expiry and no size limit.
 
+Exports (ZIP, share ZIP and "save to folder") sort the files into a subfolder per capture date:
+`<folder>/YYYY-MM-DD/<file>` with its sidecar next to it. The date is the corrected capture time
+(manual time, else EXIF time plus clock offset); files without one go to `<folder>/undated/`.
+
 Browsers with the File System Access API (`showDirectoryPicker`) can instead **save to a folder**:
-the page fetches the file list (`GET /folders/{id}/export.json`: name, size, SHA-256, original URL
+the page fetches the file list (`GET /folders/{id}/export.json`: name, date folder, size, SHA-256, original URL
 and sidecar content per photo), downloads each original with the session cookie and writes the
 sidecars itself. Files already present with the expected size are skipped and sidecars are
 rewritten only when their content changed, so a second run resumes an interrupted one and only

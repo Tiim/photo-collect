@@ -120,7 +120,7 @@ func TestSharePublicGallery(t *testing.T) {
 		names = append(names, f.Name)
 	}
 	sort.Strings(names)
-	if strings.Join(names, ",") != "Summer party/pa.jpg,Summer party/pb.jpg" {
+	if strings.Join(names, ",") != "Summer party/undated/pa.jpg,Summer party/undated/pb.jpg" {
 		t.Errorf("zip entries: %v", names)
 	}
 }
