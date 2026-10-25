@@ -170,6 +170,12 @@
 "map.title" = "Karte"
 "map.loading" = "Karte wird geladen…"
 
+"rating.help" = "Was bedeuten die Sterne?"
+"rating.meaning_1" = "Schlechtes Bild: unscharf, schlechtes Timing oder nichts Interessantes drauf"
+"rating.meaning_2" = "Wird im Archiv behalten, aber nicht veröffentlicht"
+"rating.meaning_3" = "Durchschnittliches veröffentlichtes Bild"
+"rating.meaning_4" = "Sehr gutes veröffentlichtes Bild"
+"rating.meaning_5" = "Herausragendes, künstlerisches Bild – würdig, das Titelbild des Albums zu sein"
 "rating.clear" = "löschen"
 "rating.stars" = { one = "{{.Count}} Stern", other = "{{.Count}} Sterne" }
 
