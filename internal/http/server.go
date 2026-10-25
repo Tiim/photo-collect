@@ -170,6 +170,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /folders/{id}/export.json", s.auth(s.exportJSON))
 	mux.Handle("POST /duplicates/{id}/dismiss", s.auth(s.duplicateDismiss))
 	mux.Handle("POST /duplicates/{id}/resolve", s.auth(s.duplicateResolve))
+	mux.Handle("POST /duplicates/{id}/exclude", s.auth(s.duplicateExclude))
 
 	mux.Handle("GET /images/{id}", s.auth(s.imageShow))
 	mux.Handle("GET /images/{id}/tile", s.auth(s.imageTile))

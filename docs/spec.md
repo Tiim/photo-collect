@@ -183,9 +183,12 @@ The service flags duplicate photos within a folder; it never deletes anything au
   hash. A match flags the pair for manual review; both images are kept until a person acts.
 - Comparison runs in a background job, debounced to a fixed delay after the folder's last upload
   or hash computation, so a burst of uploads triggers one scan rather than one per photo.
-- Only authenticated folder viewers/admins see flagged pairs and can resolve them (keep one and
-  move the other to the trash, merging the trashed photo's tags and rating onto the kept one; or
-  dismiss the pair as not a duplicate). Pairs are hidden while either photo is trashed.
+- Flagged pairs are shown as clusters: pairs that share a photo are joined transitively, so if A~B
+  and A~C are flagged, A, B and C appear in the same group.
+- Only authenticated folder viewers/admins see flagged groups and can resolve them (keep one and
+  move all others of the group to the trash, merging their tags onto the kept one and filling in
+  its rating, if it has none, with the highest of theirs; take a single photo out of the group as
+  not a duplicate; or dismiss the whole group). Pairs are hidden while either photo is trashed.
   Anonymous uploaders never see any of this.
 - The similarity threshold is a fixed, conservative constant, not configurable per folder.
 
