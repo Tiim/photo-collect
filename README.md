@@ -128,8 +128,10 @@ Restrict who may sign in with an Authentik policy/group binding on the applicati
   later on its page, and deleting it stops the link immediately. Trashed
   images drop out of every share.
 - Duplicate detection: an exact re-upload (same bytes) is skipped silently; a near-duplicate
-  (same picture resized/re-encoded) is flagged for review in the folder, where an admin can keep
-  one (the other goes to the trash) and merge tags/rating onto it, or dismiss the pair.
+  (same picture resized/re-encoded) is flagged for review in the folder. Flagged photos that
+  share a match are grouped (A~B and A~C show A, B, C together); an admin can keep one (the rest
+  of the group goes to the trash) and merge tags/rating onto it, take a single photo out of the
+  group, or dismiss the whole group.
 - Trash: "Move to trash" on the selected photos (or in the photo detail) hides them everywhere:
   grid, counts, exports, duplicate review and the pHash backfill. The folder's **Trash** view
   lists them; from there a selection can be restored or **deleted permanently**. There is no

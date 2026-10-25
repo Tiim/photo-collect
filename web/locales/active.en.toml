@@ -68,9 +68,10 @@
 
 "dup.title" = "Possible duplicates"
 "dup.keep" = "Keep this one"
-"dup.keep_confirm" = "Keep this photo and move the other one to the trash? Its tags and rating will be merged onto this one."
-"dup.similar" = "Similar image (distance {{.Distance}})"
-"dup.dismiss" = "Not a duplicate"
+"dup.keep_confirm" = "Keep this photo and move the other ones in this group to the trash? Their tags and rating will be merged onto this one."
+"dup.similar" = "{{.Count}} similar photos"
+"dup.dismiss" = "Not duplicates"
+"dup.exclude" = "Not a duplicate"
 
 "filter.tags" = "Tags"
 "filter.tags_placeholder" = "e.g. forrest, summer"
@@ -217,7 +218,7 @@
 "err.internal" = "Something went wrong"
 "err.too_many_requests" = "Too many requests, please slow down and try again shortly"
 "err.storage" = "Storage unavailable"
-"err.keep_pair" = "keep must be one of the pair's images"
+"err.keep_pair" = "the image must be part of the duplicate group"
 "err.rating_range" = "Rating must be between 0 and 5"
 "err.select_one" = "Select at least one image"
 "err.too_many_selected" = "Too many images selected (at most {{.Max}} at a time)"

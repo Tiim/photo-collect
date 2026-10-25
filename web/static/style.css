@@ -73,8 +73,9 @@ dl { display:grid; grid-template-columns: auto 1fr; gap:.2rem .8rem; margin:0; }
 .duplicates summary { cursor:pointer; list-style:none; } .duplicates summary::-webkit-details-marker { display:none; }
 .duplicates summary h2 { display:inline; margin:0; }
 .duplicates summary::before { content:"▸ "; } .duplicates details[open] > summary::before { content:"▾ "; }
-.dup-pair { display:flex; flex-wrap:wrap; align-items:center; gap:1rem; padding:.6rem 0; border-top:1px solid var(--line); }
-.dup-pair:first-of-type { border-top:none; }
+.dup-cluster { display:flex; flex-wrap:wrap; align-items:center; gap:1rem; padding:.6rem 0; border-top:1px solid var(--line); }
+.dup-cluster:first-of-type { border-top:none; }
+.dup-images { display:flex; flex-wrap:wrap; gap:1rem; }
 .dup-side { display:flex; flex-direction:column; gap:.3rem; width:120px; }
 .dup-side img { width:120px; height:120px; object-fit:cover; border-radius:6px; display:block; }
 .dup-meta { display:flex; flex-direction:column; gap:.4rem; margin-left:auto; }

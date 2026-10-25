@@ -2,11 +2,16 @@ package http_test
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"log/slog"
 	nethttp "net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/tiim/photo-collect/internal/config"
 )
 
 // TestDuplicateDetectionEndToEnd exercises the full flow: an exact
@@ -80,7 +85,7 @@ func TestDuplicateDetectionEndToEnd(t *testing.T) {
 
 	// The folder page shows the flagged pair to an authenticated viewer.
 	page := e.authed("GET", folderPath, nil).Body.String()
-	if !strings.Contains(page, "Possible duplicates") || !strings.Contains(page, "Similar image") {
+	if !strings.Contains(page, "Possible duplicates") || !strings.Contains(page, "2 similar photos") {
 		t.Fatalf("folder page missing duplicates panel:\n%s", page)
 	}
 	// Anonymous uploaders never see it.
@@ -187,6 +192,111 @@ func TestDuplicateDismiss(t *testing.T) {
 	// Dismissing again (already resolved) 404s.
 	if rec := e.authed("POST", "/duplicates/"+pairID+"/dismiss", nil); rec.Code != nethttp.StatusNotFound {
 		t.Fatalf("re-dismiss: %d", rec.Code)
+	}
+}
+
+// TestDuplicateClusters checks that pairs sharing an image are shown as one
+// group: with A~B and A~C flagged (but not B~C), all three photos appear in
+// the same box, a photo can be taken out of the group, and keeping one
+// trashes every other photo of the group.
+func TestDuplicateClusters(t *testing.T) {
+	e := setupWith(t, func(c *config.Config) { c.UploadMaxImagesPerFolder = 10 }, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := context.Background()
+	rec := e.authed("POST", "/folders", url.Values{"name": {"Party"}})
+	folderPath := rec.Header().Get("HX-Redirect")
+	folderID := strings.TrimPrefix(folderPath, "/folders/")
+	rec = e.authed("POST", folderPath+"/upload-link", url.Values{"days": {"2"}})
+	token := regexpMatch(t, rec.Body.String(), `/upload/([A-Za-z0-9_-]+)"`)
+	rec = e.do("POST", "/upload/"+token+"/nickname", strings.NewReader("nickname=Cy"), map[string]string{"Content-Type": "application/x-www-form-urlencoded"})
+	nick := rec.Result().Cookies()[0]
+
+	for i, w := range []int{100, 102, 104, 106} {
+		if code, res := e.upload(token, nick, fmt.Sprintf("p%d.jpg", i), jpegFile(t, w, 60)); code != 200 || res[0]["ok"] != true {
+			t.Fatalf("upload %d: %d %v", i, code, res)
+		}
+	}
+	waitFor(t, "thumbnails and hashes", func() bool {
+		var n int
+		e.db.QueryRow("SELECT COUNT(*) FROM images WHERE thumbnail_ready=1 AND phash IS NOT NULL").Scan(&n)
+		return n == 4
+	})
+	e.db.Exec("UPDATE jobs SET run_at = '2000-01-01T00:00:00.000Z' WHERE type = 'scan_folder_duplicates'")
+	waitFor(t, "all pairs flagged", func() bool {
+		rows, err := e.db.Q.ListPendingDuplicates(ctx, folderID)
+		return err == nil && len(rows) == 6
+	})
+
+	// Reduce the graph to a chain hub: A~B, A~C, A~D only.
+	rows, _ := e.db.Q.ListPendingDuplicates(ctx, folderID)
+	a := rows[0].ImageIDA
+	for _, r := range rows {
+		if r.ImageIDA != a && r.ImageIDB != a {
+			if _, err := e.db.Exec("UPDATE image_duplicates SET status='dismissed' WHERE id=?", r.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	rows, _ = e.db.Q.ListPendingDuplicates(ctx, folderID)
+	if len(rows) != 3 {
+		t.Fatalf("pending pairs = %d, want 3", len(rows))
+	}
+	others := map[string]bool{}
+	for _, r := range rows {
+		others[r.ImageIDA], others[r.ImageIDB] = true, true
+	}
+	delete(others, a)
+	var ids []string
+	for id := range others {
+		ids = append(ids, id)
+	}
+	pairID := rows[2].ID // any pair addresses the whole group
+
+	// One group of four, shown in a single box.
+	page := e.authed("GET", folderPath, nil).Body.String()
+	if strings.Count(page, `class="dup-cluster"`) != 1 || !strings.Contains(page, "4 similar photos") {
+		t.Fatalf("want one group of 4:\n%s", page)
+	}
+	for _, id := range append([]string{a}, ids...) {
+		if !strings.Contains(page, "/images/"+id+"/thumbnail") {
+			t.Fatalf("group missing image %s", id)
+		}
+	}
+
+	// Taking D out of the group leaves A, B, C together.
+	rec = e.authed("POST", "/duplicates/"+pairID+"/exclude", url.Values{"image": {ids[2]}})
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "3 similar photos") || strings.Contains(rec.Body.String(), ids[2]) {
+		t.Fatalf("exclude: %d %s", rec.Code, rec.Body)
+	}
+
+	// An image outside the group can't be kept.
+	rows, _ = e.db.Q.ListPendingDuplicates(ctx, folderID)
+	pairID = rows[0].ID
+	if rec := e.authed("POST", "/duplicates/"+pairID+"/resolve", url.Values{"keep": {ids[2]}}); rec.Code != 400 {
+		t.Fatalf("keep outside group: %d", rec.Code)
+	}
+
+	// Tag B and C differently, rate C; keep A and both get trashed.
+	e.authed("POST", "/images/"+ids[0]+"/tags", url.Values{"name": {"from-b"}})
+	e.authed("POST", "/images/"+ids[1]+"/tags", url.Values{"name": {"from-c"}})
+	e.authed("POST", "/images/"+ids[1]+"/rating", url.Values{"rating": {"4"}})
+	rec = e.authed("POST", "/duplicates/"+pairID+"/resolve", url.Values{"keep": {a}})
+	if rec.Code != 200 || strings.Contains(rec.Body.String(), "Possible duplicates") {
+		t.Fatalf("resolve: %d %s", rec.Code, rec.Body)
+	}
+	if n, _ := e.db.Q.CountImagesInFolder(ctx, folderID); n != 2 { // A + D
+		t.Fatalf("images after resolve = %d, want 2", n)
+	}
+	tags, _ := e.db.Q.ListImageTags(ctx, a)
+	names := map[string]bool{}
+	for _, tg := range tags {
+		names[tg.Name] = true
+	}
+	if !names["from-b"] || !names["from-c"] {
+		t.Fatalf("tags on kept image = %v, want from-b and from-c", tags)
+	}
+	kept, _ := e.db.Q.GetImageUnchecked(ctx, a)
+	if !kept.Rating.Valid || kept.Rating.Int64 != 4 {
+		t.Fatalf("rating on kept image = %+v, want 4", kept.Rating)
 	}
 }
 

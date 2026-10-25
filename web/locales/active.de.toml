@@ -67,9 +67,10 @@
 
 "dup.title" = "Mögliche Duplikate"
 "dup.keep" = "Dieses behalten"
-"dup.keep_confirm" = "Dieses Foto behalten und das andere in den Papierkorb legen? Tags und Bewertung werden auf dieses Foto übertragen."
-"dup.similar" = "Ähnliches Bild (Abstand {{.Distance}})"
-"dup.dismiss" = "Kein Duplikat"
+"dup.keep_confirm" = "Dieses Foto behalten und die anderen dieser Gruppe in den Papierkorb legen? Tags und Bewertung werden auf dieses Foto übertragen."
+"dup.similar" = "{{.Count}} ähnliche Fotos"
+"dup.dismiss" = "Keine Duplikate"
+"dup.exclude" = "Kein Duplikat"
 
 "filter.tags" = "Tags"
 "filter.tags_placeholder" = "z. B. wald, sommer"
@@ -216,7 +217,7 @@
 "err.internal" = "Etwas ist schiefgelaufen"
 "err.too_many_requests" = "Zu viele Anfragen, bitte warte einen Moment und versuche es erneut"
 "err.storage" = "Speicher nicht erreichbar"
-"err.keep_pair" = "„keep“ muss eines der beiden Bilder des Paars sein"
+"err.keep_pair" = "Das Bild muss zur Duplikat-Gruppe gehören"
 "err.rating_range" = "Die Bewertung muss zwischen 0 und 5 liegen"
 "err.select_one" = "Wähle mindestens ein Bild aus"
 "err.too_many_selected" = "Zu viele Bilder ausgewählt (höchstens {{.Max}} auf einmal)"
