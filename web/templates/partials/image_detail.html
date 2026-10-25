@@ -8,6 +8,8 @@
   </div>
   <div class="side">
     <h2>{{.OriginalFilename}}</h2>
+    <h3>{{t "detail.rating"}}</h3>
+    {{template "rating" .TileView}}
     <dl>
       <dt>{{t "detail.uploader"}}</dt><dd>{{.UploaderNickname}}</dd>
       <dt>{{t "detail.uploaded"}}</dt><dd>{{date .CreatedAt}}</dd>
@@ -35,8 +37,6 @@
     <div class="map" data-lat="{{.Lat}}" data-lon="{{.Lon}}"><p class="muted small">{{t "map.loading"}}</p></div>
     <p class="muted small">{{.Coords}}</p>
     {{end}}
-    <h3>{{t "detail.rating"}}</h3>
-    {{template "rating" .TileView}}
     <h3>{{t "detail.tags"}}</h3>
     {{template "image_tags" .Tags}}
     <p class="tile-actions">
