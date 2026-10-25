@@ -10,6 +10,16 @@
     <h2>{{.OriginalFilename}}</h2>
     <h3>{{t "detail.rating"}}</h3>
     {{template "rating" .TileView}}
+    <details class="rating-help">
+      <summary class="small">{{t "rating.help"}}</summary>
+      <dl class="small">
+        <dt><span class="stars">{{template "stars" 1}}</span></dt><dd>{{t "rating.meaning_1"}}</dd>
+        <dt><span class="stars">{{template "stars" 2}}</span></dt><dd>{{t "rating.meaning_2"}}</dd>
+        <dt><span class="stars">{{template "stars" 3}}</span></dt><dd>{{t "rating.meaning_3"}}</dd>
+        <dt><span class="stars">{{template "stars" 4}}</span></dt><dd>{{t "rating.meaning_4"}}</dd>
+        <dt><span class="stars">{{template "stars" 5}}</span></dt><dd>{{t "rating.meaning_5"}}</dd>
+      </dl>
+    </details>
     <dl>
       <dt>{{t "detail.uploader"}}</dt><dd>{{.UploaderNickname}}</dd>
       <dt>{{t "detail.uploaded"}}</dt><dd>{{date .CreatedAt}}</dd>

@@ -170,6 +170,12 @@
 "map.title" = "Map"
 "map.loading" = "Loading map…"
 
+"rating.help" = "What do the stars mean?"
+"rating.meaning_1" = "Bad picture: blurry, bad timing or nothing interesting in it"
+"rating.meaning_2" = "Kept in the archive, but not published"
+"rating.meaning_3" = "Average published picture"
+"rating.meaning_4" = "Very good published picture"
+"rating.meaning_5" = "Extremely good, artistic picture – worthy of the album cover"
 "rating.clear" = "clear"
 "rating.stars" = { one = "{{.Count}} star", other = "{{.Count}} stars" }
 

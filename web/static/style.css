@@ -134,4 +134,5 @@ select { padding:.4rem .5rem; border:1px solid var(--line); border-radius:6px; b
 .detail .keys-hint { margin-top:auto; }
 .detail .side { display:flex; flex-direction:column; }
 @media (max-width: 800px) { .navarrow { width:2.2rem; height:3rem; font-size:2rem; } }
+.rating-help { margin:.2rem 0 .6rem; } .rating-help dl { margin-top:.3rem; } .rating-help dt .star { font-size:.9rem; }
 .set-time { margin-top:.3rem; } .set-time form { margin-top:.3rem; }
